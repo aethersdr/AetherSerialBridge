@@ -87,7 +87,7 @@ jobs:
             --bin build\windows-dev\bin --out "$env:RUNNER_TEMP\docs-shots-windows"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: docs-shots-windows
           path: ${{ runner.temp }}/docs-shots-windows
@@ -134,7 +134,7 @@ jobs:
               /work/home/venv/bin/python tools/docs_shots.py --os linux --bin /build/bin --out /out
             '
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: docs-shots-linux
           path: docs-shots-linux
@@ -170,7 +170,7 @@ jobs:
                 /home/shots/venv/bin/python tools/docs_shots.py --os pi --bin build/linux-distro-headless/bin --out /out"
             '
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: docs-shots-pi
           path: docs-shots-pi

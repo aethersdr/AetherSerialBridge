@@ -253,7 +253,7 @@ jobs:
             --image asb-systemd-bookworm --work "$PWD/sysd-work-release" --jobs 2
 
       - name: Upload the Linux x64 artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-linux-x64
           path: |
@@ -427,7 +427,7 @@ jobs:
             --image asb-systemd-bookworm --work "$PWD/sysd-work-release" --jobs 2
 
       - name: Upload the Linux arm64 artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-linux-arm64
           path: |
@@ -663,7 +663,7 @@ jobs:
           exit $rc
 
       - name: Upload the Windows zip
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-windows-x64
           path: ${{ runner.temp }}\rel\aether-serial-bridge-windows-x64.zip
@@ -708,7 +708,7 @@ jobs:
         run: packaging/sign-release.sh release
 
       - name: Upload the release set
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-set
           path: release/

@@ -723,7 +723,7 @@ jobs:
 
       - name: Upload the WS-7 station artifacts
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ws7-station-artifacts
           path: ${{ runner.temp }}\ws7-station-artifacts
@@ -794,7 +794,7 @@ jobs:
 
       - name: Upload the WS-10 GUI folder
         if: ${{ !cancelled() && steps.ctest.conclusion != 'skipped' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ws10-gui-windows
           path: build\ws10-gui
