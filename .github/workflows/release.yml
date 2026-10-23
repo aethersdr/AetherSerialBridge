@@ -113,7 +113,7 @@ jobs:
           echo "path=$ASB_CACHE/qt-static/$(basename "$(sed -n 's/^QT_STATIC_PREFIX=//p' <<<"$out")")" >> "$GITHUB_OUTPUT"
 
       - name: Restore the static Qt (qt-static.yml saved it)
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ steps.qtkey.outputs.path }}
           key: ${{ steps.qtkey.outputs.key }}
@@ -137,7 +137,7 @@ jobs:
           cp dist/aether-serial-bridge-linux-x64 rel-bin/aether-serial-bridge
 
       - name: Restore Qt (aqt, the window's dynamic Qt; the entry ci.yml's Linux legs keep)
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ runner.temp }}/qt-cache
           key: qt-${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-linux-gcc_64-aqt${{ env.AQTINSTALL_VERSION }}-sp-rv1
@@ -314,7 +314,7 @@ jobs:
           echo "path=$ASB_CACHE/qt-static/$(basename "$(sed -n 's/^QT_STATIC_PREFIX=//p' <<<"$out")")" >> "$GITHUB_OUTPUT"
 
       - name: Restore the Qt (linux-headless; qt-static.yml saved it)
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ steps.qtkey_linux_headless.outputs.path }}
           key: ${{ steps.qtkey_linux_headless.outputs.key }}
@@ -337,7 +337,7 @@ jobs:
           echo "path=$ASB_CACHE/qt-static/$(basename "$(sed -n 's/^QT_STATIC_PREFIX=//p' <<<"$out")")" >> "$GITHUB_OUTPUT"
 
       - name: Restore the Qt (linux-gui-shared; qt-static.yml saved it)
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ steps.qtkey_linux_gui_shared.outputs.path }}
           key: ${{ steps.qtkey_linux_gui_shared.outputs.key }}
@@ -475,13 +475,13 @@ jobs:
           }
 
       - name: Restore the static Qt (windows-gui)
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ steps.qtkey.outputs.windows-gui-path }}
           key: ${{ steps.qtkey.outputs.windows-gui-key }}
 
       - name: Restore the static Qt (windows-headless)
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ steps.qtkey.outputs.windows-headless-path }}
           key: ${{ steps.qtkey.outputs.windows-headless-key }}
@@ -513,7 +513,7 @@ jobs:
           "QT_ROOT=$env:RUNNER_WORKSPACE\Qt" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Restore Qt (aqt)
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ env.QT_ROOT }}
           key: qt-${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-windows-${{ env.QT_ARCH }}-aqt${{ env.AQTINSTALL_GIT_REF }}-sp-rv1
