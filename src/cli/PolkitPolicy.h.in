@@ -1,0 +1,12 @@
+#pragma once
+
+// Generated at configure time from packaging/linux/org.aethersdr.aetherserialbridge.policy (edit that file, not
+// this one): the polkit policy `--install` writes to /usr/share/polkit-1/actions and only `--uninstall` removes
+// (WS-9b, INV-51). The helper's action: auth_admin, exec.path /usr/local/bin/aether-serial-bridge, argv1 --helper.
+
+namespace asb::cli {
+
+inline constexpr char kPolkitPolicy[] = {@ASB_POLKIT_POLICY@ '\0'};
+inline constexpr char kPolkitActionId[] = "org.aethersdr.aetherserialbridge.helper";
+
+}  // namespace asb::cli

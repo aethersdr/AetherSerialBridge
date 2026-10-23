@@ -1,0 +1,5 @@
+// The application icon, compiled into both Windows executables (src/app/CMakeLists.txt): AetherSerialBridge.exe and
+// aether-serial-bridge.exe. IDI_ICON1 is the first (and only) icon group, which is what Explorer, the taskbar,
+// Alt-Tab and the uninstall entry's DisplayIcon ("<exe>,0", UninstallEntry.cpp) show. asb.ico sits beside this file
+// and is built by tools/make_icons.sh.
+IDI_ICON1 ICON "asb.ico"

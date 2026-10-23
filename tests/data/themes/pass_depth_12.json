@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "name": "ASB Fixture",
+  "author": "fixture",
+  "version": "1",
+  "description": "fixture",
+  "tokens": {
+    "g10": {
+      "g9": {
+        "g8": {
+          "g7": {
+            "g6": {
+              "g5": {
+                "g4": {
+                  "g3": {
+                    "g2": {
+                      "g1": {
+                        "g0": {
+                          "leaf": "#123"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

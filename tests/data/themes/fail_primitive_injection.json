@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 2,
+  "name": "ASB Fixture",
+  "primitives": {
+    "color.blue.500": "url(//h/s)"
+  },
+  "scopes": {
+    "root": {
+      "tokens": {}
+    }
+  }
+}

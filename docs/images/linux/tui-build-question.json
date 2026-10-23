@@ -1,0 +1,19 @@
+{
+    "image": "tui-build-question.png",
+    "os": "linux",
+    "scale": 1,
+    "size": [
+        80,
+        24
+    ],
+    "state": "the build question on Save",
+    "texts": [
+        "Confirm",
+        "The installed bridge is a different build (program sha256 0123456789ab; an",
+        "earlier build, before 1.1). Update it to this build (1.1.0, program sha256",
+        "fedcba987654)? The ports restart. No keeps the installed program and applies the",
+        "settings to it.",
+        "y Yes  n No  Esc cancel"
+    ],
+    "theme": "aethersdr.com palette"
+}

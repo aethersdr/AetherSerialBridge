@@ -1,0 +1,7 @@
+{
+  "serialDevices": ["/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_DEMO0001-if00-port0",
+                    "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_DEMO0002-if00-port0"],
+  "localAddresses": ["192.0.2.20", "127.0.0.1", "0.0.0.0"],
+  "dataFolder": "/etc/aether-serial-bridge",
+  "appImage": "/home/demo/Downloads/aether-serial-bridge-gui-x86_64.AppImage"
+}

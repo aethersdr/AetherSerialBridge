@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "name": "ASB Fixture",
+  "scopes": {
+    "root": {
+      "tokens": {
+        "font": {
+          "family": {
+            "ui": {
+              "family": "Inter; color: red",
+              "size": 12
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,126 @@
+P2 load-validated-theme-from-bytes (Aether Serial Bridge, master §3.4 / WS-2; INV-52, INV-84)
+
+(a) loadThemeFromPath() becomes "read the file" + the private loader
+    loadThemeFromJson(bytes, origin).
+(b) loadThemeFromJson() clears ALL previously loaded state before seeding:
+    m_tokens (the root scope's tokens, previously never cleared, so a root
+    token from theme A survived into theme B), the child scopes, the
+    primitives, and the factory-snapshot latch.
+(c) public bool activateValidatedTheme(name, json): loads exactly the given
+    bytes, sets the active name and emits themeChanged(); it touches no
+    AppSettings, no m_themePaths and no file, and a failed load leaves the
+    previous theme in place.
+
+Carries a GPL-3.0 section 5(a) modification notice. Offered upstream (R1);
+(b) also fixes an upstream stale-token bug.
+Test: tests/tst_ThemePatches.cpp (activatesFromBytesOnly,
+rootTokenFromPreviousThemeCleared, builtInsThroughSameRoute,
+replaceAfterValidationHasNoEffect, failedActivationKeepsPreviousTheme).
+
+diff --git a/src/core/ThemeManager.cpp b/src/core/ThemeManager.cpp
+index f6366d1..47c1479 100644
+--- a/src/core/ThemeManager.cpp
++++ b/src/core/ThemeManager.cpp
+@@ -1,5 +1,7 @@
+ // GPL-3.0 section 5(a) notice: this file was modified for Aether Serial Bridge on 2026-10-14 by
+ // patch 0001-user-theme-dir-hook (scanAvailableThemes asks the host for the user theme directory).
++// GPL-3.0 section 5(a) notice: this file was modified for Aether Serial Bridge on 2026-10-14 by
++// patch 0002-load-validated-theme-from-bytes (activateValidatedTheme; a load clears all prior state).
+ #include "ThemeManager.h"
+ #include "AppSettings.h"
+ #include "LogManager.h"
+@@ -457,11 +459,29 @@ bool ThemeManager::loadThemeFromPath(const QString& path)
+         qCWarning(lcGui) << "ThemeManager: cannot open" << path;
+         return false;
+     }
+-    QJsonParseError err{};
+-    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
++    const QByteArray json = f.readAll();
+     f.close();
++    return loadThemeFromJson(json, path);
++}
++
++bool ThemeManager::activateValidatedTheme(const QString& name, const QByteArray& json)
++{
++    // Exactly these bytes: nothing is re-read from a path, so a file replaced
++    // after the caller validated it has no effect. Always reloads (the same name
++    // may carry different bytes), and touches no AppSettings, no m_themePaths and
++    // no file. A failed load leaves the previous theme fully in place.
++    if (!loadThemeFromJson(json, QStringLiteral("validated theme ") + name)) return false;
++    m_activeTheme = name;
++    emit themeChanged();
++    return true;
++}
++
++bool ThemeManager::loadThemeFromJson(const QByteArray& json, const QString& origin)
++{
++    QJsonParseError err{};
++    const QJsonDocument doc = QJsonDocument::fromJson(json, &err);
+     if (err.error != QJsonParseError::NoError) {
+-        qCWarning(lcGui) << "ThemeManager: parse error in" << path
++        qCWarning(lcGui) << "ThemeManager: parse error in" << origin
+                           << ":" << err.errorString();
+         return false;
+     }
+@@ -471,16 +491,23 @@ bool ThemeManager::loadThemeFromPath(const QString& path)
+     const int schemaVersion = root.value("schemaVersion").toInt(0);
+     if (schemaVersion < 1) {
+         qCWarning(lcGui) << "ThemeManager: unsupported schemaVersion"
+-                          << schemaVersion << "in" << path;
++                          << schemaVersion << "in" << origin;
+         return false;
+     }
+ 
+-    // Reset the scope tree before loading. clear() drops child scopes (including
++    // Reset ALL previously loaded state before loading, so nothing from the
++    // previous theme survives into this one. clear() drops child scopes (including
+     // per-applet seeds); seedBuiltinDefaults() re-seeds them via scopeOrCreate().
+-    // The compiled-in defaults are the floor for older theme files with fewer
+-    // tokens; the theme JSON (readScopeFromJson below) wins where it defines a value.
++    // m_tokens (the root scope's tokens) has to be cleared too: the seed only
++    // inserts, so a root token defined by the previous theme and absent from both
++    // the seed and this theme would otherwise survive. The factory snapshot is
++    // re-taken for the new theme's base. The compiled-in defaults are the floor
++    // for older theme files with fewer tokens; the theme JSON (readScopeFromJson
++    // below) wins where it defines a value.
++    m_tokens.clear();
+     m_rootScope->children.clear();
+     m_primitives.clear();
++    m_factoryLoaded = false;
+     // Per-theme, not per-process: a token missing only in THIS theme should be
+     // reported again when the operator comes back to it, otherwise the one log
+     // line they need has scrolled away and never reappears.
+diff --git a/src/core/ThemeManager.h b/src/core/ThemeManager.h
+index be1bd17..4e04bcf 100644
+--- a/src/core/ThemeManager.h
++++ b/src/core/ThemeManager.h
+@@ -1,3 +1,5 @@
++// GPL-3.0 section 5(a) notice: this file was modified for Aether Serial Bridge on 2026-10-14 by
++// patch 0002-load-validated-theme-from-bytes (activateValidatedTheme; a load clears all prior state).
+ #pragma once
+ 
+ #include <QObject>
+@@ -197,6 +199,12 @@ public:
+     QStringList availableThemes() const;        // built-in + user-dir themes
+     QString     activeTheme() const;
+     bool        setActiveTheme(const QString& name);
++    // Activate a theme from bytes the caller has already validated: loads
++    // exactly `json` (never re-reads a file), sets the active name and emits
++    // themeChanged().  Touches no AppSettings, no theme-path index and no file.
++    // Returns false, with the previous theme left fully in place, if the bytes
++    // do not load.
++    bool        activateValidatedTheme(const QString& name, const QByteArray& json);
+ 
+     // Phase 5 — editor support.  Enumerate every token and mutate
+     // scalar values in-memory.  Mutations emit themeChanged so every
+@@ -391,6 +399,10 @@ private:
+     // into m_tokens.  Returns true on success; tokens from a failed load
+     // are not committed (the previously-active theme stays loaded).
+     bool loadThemeFromPath(const QString& path);
++    // The loader proper, shared by loadThemeFromPath() and
++    // activateValidatedTheme().  `origin` names the source in log messages.
++    // Clears every piece of previously loaded state before loading.
++    bool loadThemeFromJson(const QByteArray& json, const QString& origin);
+ 
+     // Assemble the v2 theme document (schemaVersion + metadata + primitives
+     // palette + nested scope tree) for the live theme state.  THE single

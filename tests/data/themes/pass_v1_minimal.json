@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "ASB Fixture",
+  "author": "fixture",
+  "version": "1",
+  "description": "fixture",
+  "tokens": {
+    "color": {
+      "accent": "#00b4d8",
+      "background": {
+        "0": "#0f0f1a"
+      }
+    }
+  }
+}

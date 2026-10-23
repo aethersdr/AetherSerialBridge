@@ -1,0 +1,24 @@
+Edit port Amp                                                                   
+────────────────────────────────────────────────────────────────────────────────
+Name         Amp_                                                               
+Enabled      [x]                                                                
+Device       COM3                                                               
+Baud         38400                                                              
+Format       8N1                                                                
+Listen on    0.0.0.0                                                            
+TCP port     4001                                                               
+Allowed      10.0.0.5                                                           
+Assert DTR   [ ]                                                                
+Assert RTS   [ ]                                                                
+                                                                                
+A label for the port, e.g. KAT500 (up to 40 characters).                        
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+Tab next  Shift+Tab back  Space toggle  Enter accept  Esc cancel                

@@ -1,0 +1,3 @@
+{"state": "IncompleteInstall", "otherBuild": true,
+ "installedSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+ "installedVersion": "", "detail": "the installed program is a different build"}

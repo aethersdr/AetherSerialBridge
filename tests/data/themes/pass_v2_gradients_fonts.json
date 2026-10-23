@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 2,
+  "name": "ASB Gradients",
+  "primitives": {
+    "color.blue.500": "#00b4d8",
+    "gradient.hero": {
+      "type": "linear-gradient",
+      "angle": 180,
+      "stops": [
+        {
+          "at": 0,
+          "color": "#112233"
+        },
+        {
+          "at": 1,
+          "color": "{color.blue.500}"
+        }
+      ]
+    },
+    "flag": true,
+    "scale": 1.5
+  },
+  "scopes": {
+    "root": {
+      "tokens": {
+        "color": {
+          "accent": "red",
+          "dim": "darkslategrey",
+          "clear": "transparent",
+          "edge": "#abc",
+          "glass": "#80aabbcc"
+        },
+        "gradient": {
+          "panel": {
+            "type": "linear-gradient",
+            "angle": 180,
+            "stops": [
+              {
+                "at": 0,
+                "color": "#112233"
+              },
+              {
+                "at": 1,
+                "color": "{color.blue.500}"
+              }
+            ]
+          },
+          "halo": {
+            "type": "radial-gradient",
+            "center": [
+              0.5,
+              0.5
+            ],
+            "radius": 0.7,
+            "stops": [
+              {
+                "at": 0.25,
+                "color": "transparent"
+              },
+              {
+                "at": 1.0,
+                "color": "#80ffffff"
+              }
+            ]
+          }
+        },
+        "font": {
+          "family": {
+            "ui": {
+              "family": "Inter",
+              "size": 12,
+              "color": "#c8d8e8"
+            },
+            "freq": {
+              "family": "DSEG7 Modern",
+              "size": 14,
+              "color": "#00b4d8"
+            },
+            "legacy": "DSEG14 Modern"
+          },
+          "size": {
+            "freq": 20
+          }
+        },
+        "sizing": {
+          "radius": 4,
+          "negative": -10000,
+          "enabled": false
+        }
+      },
+      "scopes": {
+        "applet/rx": {
+          "tokens": {
+            "color": {
+              "accent": "{color.accent}"
+            }
+          }
+        }
+      }
+    }
+  }
+}

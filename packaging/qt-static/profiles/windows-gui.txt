@@ -1,0 +1,9 @@
+# Static Qt, Windows GUI profile (WS-13; master D3 and section 4.11): Widgets and Gui with the qwindows
+# platform plugin linked in as a static plugin, PNG built into QtGui, the static MSVC runtime. Nothing is
+# loaded from beside the executable. Builds AetherSerialBridge.exe.
+-static -static-runtime -release
+-no-opengl -no-dbus
+-no-icu -no-openssl
+-no-feature-sql
+-qt-libpng -qt-zlib -qt-freetype
+-nomake tests -nomake examples

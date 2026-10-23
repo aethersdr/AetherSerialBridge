@@ -1,0 +1,8 @@
+# Static Qt, headless Windows profile (WS-13, master section 9): the Linux headless profile with the static
+# MSVC runtime and without QtDBus. Builds aether-serial-bridge.exe (service host, CLI, TUI).
+-static -static-runtime -release
+-no-gui -no-widgets -no-opengl
+-no-dbus
+-no-icu -no-openssl -no-glib
+-no-feature-sql
+-nomake tests -nomake examples

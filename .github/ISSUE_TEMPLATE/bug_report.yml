@@ -1,0 +1,103 @@
+name: Bug Report
+description: Something isn't working right
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Thank you for helping improve AetherSerialBridge! 🙏
+
+        To help us resolve your issue as quickly as possible, please attach what the bridge says about itself:
+
+        - the output of `aether-serial-bridge --status` (Windows: `aether-serial-bridge.exe --status`), and
+        - the log: on Windows `%ProgramData%\AetherSerialBridge\bridge.log` (the window's **Show log** shows it),
+          on Linux `journalctl -u aether-serial-bridge`.
+
+        Check them for addresses and names you would rather not post. Well-structured reports with the status, the log
+        and reproduction steps are resolved significantly faster.
+
+  - type: checkboxes
+    id: preparation
+    attributes:
+      label: Report preparation
+      options:
+        - label: "I have attached the `--status` output"
+          required: false
+        - label: "I have attached the log"
+          required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: |
+        Describe the bug. Screenshots, log excerpts and serial captures are welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: false
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure port ...
+        2. Connect AetherSDR (or another client) to ...
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: AetherSerialBridge version
+      description: "`aether-serial-bridge --version` (e.g., aether-serial-bridge 1.2.0)"
+      placeholder: "aether-serial-bridge 1.2.0"
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and serial adapter
+      description: "The equipment on the serial port (make, model, firmware) and the adapter or cable"
+      placeholder: "Elecraft KPA500, FTDI USB-serial cable"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - Linux
+        - Raspberry Pi OS
+    validations:
+      required: true
+
+  - type: input
+    id: os_details
+    attributes:
+      label: OS version and hardware
+      description: |
+        Windows: version and edition (e.g., "Windows 11 24H2 Pro")
+        Linux: distribution and version (e.g., "Ubuntu 24.04, x64")
+        Raspberry Pi: model and OS (e.g., "Pi 5, Raspberry Pi OS Bookworm 64-bit")
+      placeholder: "e.g., Windows 11 24H2 Pro"
+    validations:
+      required: true
+
+  - type: input
+    id: aethersdr
+    attributes:
+      label: AetherSDR version (if AetherSDR is the client)
+      placeholder: "e.g., 26.10.3"
+    validations:
+      required: false

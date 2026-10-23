@@ -1,0 +1,20 @@
+{
+  "comment": "The staging script's own stderr lines (packaging/linux/stage.sh; v1.1 WS-15 section 1). Each exit of the script's own prints exactly one 'asb-stage: <line>'. tst_StageScript::catalogueMatchesScript checks this list against the script both ways; the systemd suite's bootstrap_* cases assert the exact line. Placeholders: <dir>, <plen>, <rlen>, <rc>.",
+  "lines": [
+    {"exit": 4, "line": "bad arguments"},
+    {"exit": 4, "line": "bad digest"},
+    {"exit": 4, "line": "bad lengths"},
+    {"exit": 4, "line": "<dir> is not a directory only root can write"},
+    {"exit": 4, "line": "the staging root is not a root-only directory"},
+    {"exit": 4, "line": "cannot create the staging root"},
+    {"exit": 4, "line": "cannot create a staging directory"},
+    {"exit": 4, "line": "cannot store the payload"},
+    {"exit": 4, "line": "the payload is not <plen>+<rlen> bytes"},
+    {"exit": 4, "line": "cannot split the payload"},
+    {"exit": 4, "line": "cannot hash the program"},
+    {"exit": 4, "line": "cannot make the program executable"},
+    {"exit": 4, "line": "interrupted"},
+    {"exit": 3, "line": "the program does not match its digest"},
+    {"exit": 6, "line": "the staged program could not be executed (<rc>)"}
+  ]
+}

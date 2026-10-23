@@ -1,0 +1,5 @@
+Amp: every network interface; 
+Linux ignores allowed clients:
+anyone who can reach it can   
+use the device. Save anyway?  
+y Yes    n No (Esc)           

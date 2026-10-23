@@ -1,0 +1,17 @@
+{
+  "comment": "INV-135: what the demo images may show beyond the documentation address ranges. Paths match on whole components (a path inside one passes); every entry is the product's own fixed location or the demo fixture's. The one host is the public site the TUI's palette is named after (the TUI manifests' theme). tools/check_docs_images.py holds the fixture files to the same rules.",
+  "words": [],
+  "paths": [
+    "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_DEMO0001-if00-port0",
+    "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_DEMO0002-if00-port0",
+    "/etc/aether-serial-bridge",
+    "/var/lib/aether-serial-bridge",
+    "/usr/local/bin",
+    "/usr/local/lib/aether-serial-bridge",
+    "/bin/sh",
+    "/home/demo/",
+    "C:/ProgramData/AetherSerialBridge",
+    "C:/Program Files/AetherSerialBridge"
+  ],
+  "hosts": ["aethersdr.com"]
+}

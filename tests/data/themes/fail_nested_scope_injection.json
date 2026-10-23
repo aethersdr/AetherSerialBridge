@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "name": "ASB Fixture",
+  "scopes": {
+    "root": {
+      "tokens": {
+        "color": {
+          "accent": "#123"
+        }
+      },
+      "scopes": {
+        "applet/rx": {
+          "tokens": {
+            "color": {
+              "accent": "red} QWidget { image: url(x)"
+            }
+          }
+        }
+      }
+    }
+  }
+}

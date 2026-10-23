@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "ports": [
+    {
+      "enabled": true,
+      "name": "KAT500",
+      "comPort": "COM3",
+      "baudRate": 38400,
+      "dataBits": 8,
+      "parity": "None",
+      "stopBits": "One",
+      "handshake": "None",
+      "dtrEnable": false,
+      "rtsEnable": false,
+      "tcpPort": 4001,
+      "bindAddress": "192.168.1.20",
+      "allowedClients": ""
+    },
+    {
+      "enabled": true,
+      "name": "KPA500",
+      "comPort": "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A10K1234-if00-port0",
+      "baudRate": 9600,
+      "dataBits": 7,
+      "parity": "Even",
+      "stopBits": "Two",
+      "handshake": "XOnXOff",
+      "dtrEnable": true,
+      "rtsEnable": true,
+      "tcpPort": 4002,
+      "bindAddress": "0.0.0.0",
+      "allowedClients": "192.168.1.0/24, LocalSubnet"
+    },
+    {
+      "enabled": false,
+      "name": "",
+      "comPort": "COM12",
+      "baudRate": 115200,
+      "dataBits": 8,
+      "parity": "Odd",
+      "stopBits": "OnePointFive",
+      "handshake": "RequestToSend",
+      "dtrEnable": false,
+      "rtsEnable": false,
+      "tcpPort": 4003,
+      "bindAddress": "::",
+      "allowedClients": "2001:db8::/32,10.0.0.1-10.0.0.9"
+    },
+    {
+      "enabled": true,
+      "name": "Ampère tuner (2)",
+      "comPort": "COM4",
+      "baudRate": 4800,
+      "dataBits": 5,
+      "parity": "Mark",
+      "stopBits": "One",
+      "handshake": "None",
+      "dtrEnable": false,
+      "rtsEnable": false,
+      "tcpPort": 4004,
+      "bindAddress": "fe80::1",
+      "allowedClients": "Any"
+    },
+    {
+      "enabled": true,
+      "name": "Rotor_1",
+      "comPort": "COM5",
+      "baudRate": 1200,
+      "dataBits": 8,
+      "parity": "Space",
+      "stopBits": "One",
+      "handshake": "None",
+      "dtrEnable": false,
+      "rtsEnable": false,
+      "tcpPort": 65535,
+      "bindAddress": "127.0.0.1",
+      "allowedClients": ""
+    }
+  ]
+}

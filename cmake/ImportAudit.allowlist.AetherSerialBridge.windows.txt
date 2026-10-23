@@ -1,0 +1,53 @@
+# DLLs AetherSerialBridge.exe (the GUI) may import, static or delay-loaded (WS-7, INV-67). System32 only: with
+# /DEPENDENTLOADFLAG:0x800 the loader takes them from System32, and nothing else may be imported. Globs allowed.
+api-ms-win-*.dll
+ext-ms-win-*.dll
+kernel32.dll
+kernelbase.dll
+ntdll.dll
+user32.dll
+gdi32.dll
+advapi32.dll
+ole32.dll
+oleaut32.dll
+shell32.dll
+shlwapi.dll
+ws2_32.dll
+iphlpapi.dll
+dnsapi.dll
+netapi32.dll
+userenv.dll
+version.dll
+winmm.dll
+setupapi.dll
+cfgmgr32.dll
+crypt32.dll
+bcrypt.dll
+ncrypt.dll
+secur32.dll
+authz.dll
+mpr.dll
+rpcrt4.dll
+psapi.dll
+powrprof.dll
+wtsapi32.dll
+normaliz.dll
+comdlg32.dll
+imm32.dll
+dwmapi.dll
+uxtheme.dll
+d3d9.dll
+d3d11.dll
+d3d12.dll
+dxgi.dll
+dwrite.dll
+d2d1.dll
+dcomp.dll
+opengl32.dll
+shcore.dll
+# WS-13: imports of the STATIC release exe (Qt linked in), all System32 DLLs, resolved from System32 by
+# /DEPENDENTLOADFLAG:0x800. winhttp.dll: QtNetwork's system proxy lookup; icuuc.dll: Windows' own ICU
+# (System32, Windows 10 1903+), which QtCore uses; mscms.dll: QtGui's colour management.
+winhttp.dll
+icuuc.dll
+mscms.dll

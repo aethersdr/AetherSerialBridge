@@ -1,0 +1,20 @@
+Edit port Amp                           
+────────────────────────────────────────
+Name         Amp                        
+Enabled      [x]                        
+Device       …_UART_A10KQ7XB-if00-port0_
+Baud         38400                      
+Format       8N1                        
+Listen on    0.0.0.0                    
+TCP port     4001                       
+Allowed      10.0.0.5                   
+Assert DTR   [ ]                        
+Assert RTS   [ ]                        
+                                        
+Use the /dev/serial/by-id/ name: ttyUSB 
+numbers can swap on replug.             
+                                        
+                                        
+                                        
+                                        
+Tab next  Enter accept  Esc cancel      

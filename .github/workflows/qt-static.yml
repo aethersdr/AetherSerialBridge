@@ -1,0 +1,193 @@
+name: Static Qt
+
+# Builds the static Qt profiles (packaging/qt-static/profiles) from source and keeps each finished prefix in the
+# Actions cache, so a release build (release.yml) restores it instead of building it.
+#
+# The cache entry of a profile is keyed by the build script's own key (build-qt-static.sh --key / .ps1 -KeyOnly):
+# the hash of everything that decides the bytes (the Qt version, the source archives' SHA-256, the profile's configure
+# arguments, the script, the compiler, the machine architecture). That is exactly what the prefix's stamp records, so
+# a restored entry always passes the script's stamp check, and a change to any input is a new key and a fresh build.
+# Entries are immutable: a job saves only on a miss.
+#
+# Sizes and times (measured on the self-hosted machines this ran on before the move; hosted figures estimated):
+#   linux-headless x64     157 MB (44 MB as zstd)   ~3 min cold on a 24-thread host; ~20 min estimated on 4 vCPU
+#   linux-headless arm64   156 MB                   21 min cold on a Raspberry Pi 5 (3 jobs); hosted arm64 no slower
+#   linux-gui-shared arm64  82 MB                   24 min cold on the Pi
+#   windows-gui            340 MB                   ~7 min cold on a 32-thread host; ~55 min estimated on 4 vCPU
+#   windows-headless       201 MB                   ~4 min cold on the 32-thread host; ~35 min estimated on 4 vCPU
+# About 0.9 GB uncompressed for every profile, roughly a quarter of that stored, well inside the repository's 10 GB
+# Actions cache. Every job is far inside the 6 h job limit even cold.
+#
+# Triggers:
+#   workflow_call      release.yml runs this first: each profile is restored (a hit is a download) or built once,
+#                      in its own job, before the release jobs restore it.
+#   workflow_dispatch  warm the cache by hand, after the Qt pin, a profile or a build script changed.
+#   schedule           weekly on main: GitHub evicts an entry nobody restored for 7 days, and an entry saved on main
+#                      is the one every branch and tag can restore. The weekly restore keeps it.
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 5 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------------------------
+  # linux-x64: the headless profile in the ubuntu:22.04 build container (glibc floor 2.35).
+  # ---------------------------------------------------------------------------------------------
+  linux-x64:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Build the build container
+        run: >-
+          docker build --pull --label org.aethersdr.asb-ci=containers -t asb-build-2204
+          -f ci/containers/build-ubuntu2204.Dockerfile ci/containers
+
+      # The key hashes the container's compiler, so it is computed in the container. /qt-static is the path every
+      # container that builds or uses the prefix mounts it at (Qt records its prefix).
+      - name: Cache key
+        id: key
+        run: |
+          out="$(docker run --rm -v "$PWD:/src:ro" -w /src asb-build-2204 \
+            packaging/qt-static/build-qt-static.sh --key linux-headless /qt-static)"
+          echo "$out"
+          key="$(sed -n 's/^QT_STATIC_KEY=//p' <<<"$out")"
+          prefix="$(sed -n 's/^QT_STATIC_PREFIX=//p' <<<"$out")"
+          echo "key=qt-static-linux-x64-linux-headless-$key" >> "$GITHUB_OUTPUT"
+          echo "path=$RUNNER_TEMP/qt-static/$(basename "$prefix")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the static Qt
+        id: restore
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ steps.key.outputs.path }}
+          key: ${{ steps.key.outputs.key }}
+
+      - name: Static Qt (linux-headless)
+        if: steps.restore.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p home "$RUNNER_TEMP/qt-static"
+          docker run --rm --label org.aethersdr.asb-ci=containers \
+            -u "$(id -u):$(id -g)" -e HOME=/work/home -v "$PWD:/src:ro" -v "$PWD/home:/work/home" \
+            -v "$RUNNER_TEMP/qt-static:/qt-static" -w /src asb-build-2204 \
+            packaging/qt-static/build-qt-static.sh linux-headless /qt-static
+
+      - name: Save the static Qt
+        if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ steps.key.outputs.path }}
+          key: ${{ steps.key.outputs.key }}
+
+  # ---------------------------------------------------------------------------------------------
+  # linux-arm64: the headless profile and the arm64 window's SHARED Qt (linux-gui-shared: aqt's linux_arm64 QtGui
+  # needs GLIBC_2.38), in the same ubuntu:22.04 container on a hosted arm64 runner.
+  # ---------------------------------------------------------------------------------------------
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    # The arm64 switch (ci.yml's header): every arm64 job runs unless the repository variable says 'false'.
+    if: vars.ASB_ARM64_RUNNERS != 'false'
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [linux-headless, linux-gui-shared]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Build the build container
+        run: >-
+          docker build --pull --label org.aethersdr.asb-ci=containers -t asb-build-2204
+          -f ci/containers/build-ubuntu2204.Dockerfile ci/containers
+
+      - name: Cache key
+        id: key
+        run: |
+          out="$(docker run --rm -v "$PWD:/src:ro" -w /src asb-build-2204 \
+            packaging/qt-static/build-qt-static.sh --key "${{ matrix.profile }}" /qt-static)"
+          echo "$out"
+          key="$(sed -n 's/^QT_STATIC_KEY=//p' <<<"$out")"
+          prefix="$(sed -n 's/^QT_STATIC_PREFIX=//p' <<<"$out")"
+          echo "key=qt-static-linux-arm64-${{ matrix.profile }}-$key" >> "$GITHUB_OUTPUT"
+          echo "path=$RUNNER_TEMP/qt-static/$(basename "$prefix")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the static Qt
+        id: restore
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ steps.key.outputs.path }}
+          key: ${{ steps.key.outputs.key }}
+
+      - name: Qt (${{ matrix.profile }}, arm64)
+        if: steps.restore.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p home "$RUNNER_TEMP/qt-static"
+          docker run --rm --label org.aethersdr.asb-ci=containers \
+            -u "$(id -u):$(id -g)" -e HOME=/work/home -v "$PWD:/src:ro" -v "$PWD/home:/work/home" \
+            -v "$RUNNER_TEMP/qt-static:/qt-static" -w /src asb-build-2204 \
+            packaging/qt-static/build-qt-static.sh "${{ matrix.profile }}" /qt-static
+
+      - name: Save the static Qt
+        if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ steps.key.outputs.path }}
+          key: ${{ steps.key.outputs.key }}
+
+  # ---------------------------------------------------------------------------------------------
+  # windows: the GUI profile and the headless profile, one job each, with the runner image's MSVC (the key hashes
+  # VCToolsVersion, so a new toolset on the image is a new key and one cold build).
+  # ---------------------------------------------------------------------------------------------
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [windows-gui, windows-headless]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: MSVC environment
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x64
+
+      # A fixed cache root: Qt records its prefix, and release.yml restores to the same path.
+      - name: Cache key
+        id: key
+        shell: pwsh
+        run: |
+          $out = pwsh -NoProfile -File packaging/qt-static/build-qt-static.ps1 -QtProfile ${{ matrix.profile }} -CacheRoot C:\asb-qt-static -KeyOnly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $out
+          $key = ($out | Select-String '^QT_STATIC_KEY=(.*)$').Matches[0].Groups[1].Value
+          $prefix = ($out | Select-String '^QT_STATIC_PREFIX=(.*)$').Matches[0].Groups[1].Value
+          "key=qt-static-windows-x64-${{ matrix.profile }}-$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "path=$prefix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Restore the static Qt
+        id: restore
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ steps.key.outputs.path }}
+          key: ${{ steps.key.outputs.key }}
+
+      - name: Static Qt (${{ matrix.profile }})
+        if: steps.restore.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File packaging/qt-static/build-qt-static.ps1 -QtProfile ${{ matrix.profile }} -CacheRoot C:\asb-qt-static
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Save the static Qt
+        if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ steps.key.outputs.path }}
+          key: ${{ steps.key.outputs.key }}

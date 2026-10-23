@@ -1,0 +1,39 @@
+# Host libraries the AppImage's ELF files may NEED without bundling them (v1.1 fix, the window on stock Ubuntu;
+# tools/release_audit.py host-libs). Every other DT_NEEDED must be a file in the image's usr/lib. Globs allowed.
+#
+# Only what a STOCK Ubuntu desktop ("minimal installation", ubuntu-desktop-minimal) guarantees, and only what the
+# image needs today (derived from the x86_64 and aarch64 images of release dry run 39205828463). Adding a line is a
+# claim that every supported desktop installs that library: check it on a stock install (release.yml starts the
+# window in asb-stock-desktop-2604) before adding one.
+#
+# Deliberately ABSENT: libOpenGL.so.0 (glvnd's libopengl0 is not part of a stock desktop; the window NEEDed it and did
+# not start, 2026-10-19; release_audit.py refuses an allowlist that admits it) and libGLX.so.0 (the window needed it
+# for the same reason and needs it no more; Qt's own libraries reach GLX through libGL.so.1).
+
+# glibc (the 2.35 floor is INV-87's glibc-tree gate) and the compiler runtime: linuxdeploy's excludelist keeps them out.
+libc.so.6
+libm.so.6
+libdl.so.2
+libpthread.so.0
+libresolv.so.2
+ld-linux-*
+
+libstdc++.so.6
+libgcc_s.so.1
+
+# GLVND front ends: always the host's (they pick the host's driver); release_audit.py also refuses them bundled.
+libGL.so.1
+libEGL.so.1
+
+# X11 / xcb core, fonts, zlib: linuxdeploy's excludelist, every desktop has them.
+libX11.so.6
+libX11-xcb.so.1
+libxcb.so.1
+libfontconfig.so.1
+libfreetype.so.6
+libz.so.1
+
+# Kerberos / gcrypt support libraries of bundled libraries (linuxdeploy's excludelist): e2fsprogs' libcom-err2 and
+# libgpg-error0 are in every Ubuntu install.
+libcom_err.so.2
+libgpg-error.so.0

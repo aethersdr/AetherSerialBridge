@@ -1,0 +1,33 @@
+# AetherSDR files vendored into vendor/aethersdr/, one upstream path per line (relative to the
+# AetherSDR repository root, which is this directory). The commit is recorded in PROVENANCE.md.
+# tools/sync-aethersdr.sh copies exactly these files, applies patches/*.patch in order and fails on
+# any file here that is not listed (FILES, PROVENANCE.md and patches/ are the only exceptions).
+LICENSE
+docs/assets/logo-circle-256.png
+docs/assets/logo-circle.png
+resources/themes/default-dark.json
+resources/themes/default-light.json
+src/core/ThemeManager.cpp
+src/core/ThemeManager.h
+src/core/ThemeSeedGenerated.cpp
+src/gui/CanonIndicators.h
+src/gui/CanonWindow.cpp
+src/gui/CanonWindow.h
+src/gui/ComboStyle.h
+src/gui/FramelessMoveHelper.h
+src/gui/FramelessResizer.cpp
+src/gui/FramelessResizer.h
+src/gui/ModemChrome.cpp
+src/gui/ModemChrome.h
+src/gui/Theme.h
+src/gui/ThemedImageCache.h
+tests/TestSettingsProfile.h
+tests/canon_window_test.cpp
+third_party/inter/Inter-Bold.ttf
+third_party/inter/Inter-Regular.ttf
+third_party/inter/LICENSE.txt
+third_party/sqlite/README.md
+third_party/sqlite/sqlite3.c
+third_party/sqlite/sqlite3.h
+tools/check_theme_seed.py
+tools/gen_theme_seed.py

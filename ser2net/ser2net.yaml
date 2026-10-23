@@ -1,0 +1,54 @@
+%YAML 1.1
+---
+# aether-serial-bridge: example ser2net 4.x configuration.
+#
+# One TCP port per serial device. Replace each /dev/serial/by-id/... path with
+# the real one (`ls -l /dev/serial/by-id/`). Use by-id paths, not /dev/ttyUSB*:
+# the ttyUSB numbers can swap after a reboot or replug.
+#
+# Bind to a LAN or VPN address, never 0.0.0.0 on an internet-facing host.
+# ser2net has no authentication: whoever reaches the port controls the device.
+# Example: `accepter: tcp,192.168.1.50,4001`.
+#
+# One client per port. kickolduser lets a new connection take the port from a
+# stale one (e.g. a client that crashed without closing its socket).
+
+# Elecraft KAT500 antenna tuner: ASCII protocol, raw TCP.
+connection: &kat500
+  accepter: tcp,4001
+  connector: serialdev,/dev/serial/by-id/REPLACE-ME-kat500,38400n81,local
+  options:
+    kickolduser: true
+
+# Elecraft KPA500 amplifier: ASCII ^CMD; protocol, raw TCP.
+# The baud rate must match the amp's own setting (the KPA500 supports several).
+connection: &kpa500
+  accepter: tcp,4002
+  connector: serialdev,/dev/serial/by-id/REPLACE-ME-kpa500,38400n81,local
+  options:
+    kickolduser: true
+
+# Elecraft KXPA100 amplifier: raw TCP.
+connection: &kxpa100
+  accepter: tcp,4003
+  connector: serialdev,/dev/serial/by-id/REPLACE-ME-kxpa100,38400n81,local
+  options:
+    kickolduser: true
+
+# --- Other amplifiers AetherSDR already supports over the network ---
+
+# ACOM S-series: must be RAW. Telnet mode doubles byte 0xFF, which ACOM's
+# binary protocol uses as real data.
+# connection: &acom
+#   accepter: tcp,4010
+#   connector: serialdev,/dev/serial/by-id/REPLACE-ME-acom,9600n81,local
+#   options:
+#     kickolduser: true
+
+# SPE Expert 1.3K/1.5K/2K-FA: telnet with RFC 2217, so AetherSDR can drive
+# DTR/RTS remotely (needed for the remote power-on path).
+# connection: &spe
+#   accepter: telnet(rfc2217),tcp,4011
+#   connector: serialdev,/dev/serial/by-id/REPLACE-ME-spe,115200n81
+#   options:
+#     kickolduser: true

@@ -1,0 +1,746 @@
+name: Release
+
+# The release artifacts (WS-13) and every acceptance gate on the
+# RELEASED trees, not the build trees:
+#   aether-serial-bridge-windows-x64.zip       two static exes + readme + licences (D9): import audit, digest,
+#                                              no test seams, release_gui_self_test (INV-88), the deployed-tree
+#                                              test, tst_CliNative on the unzipped
+#                                              exe, activation_matrix (INV-99), the WS-7 service suites and
+#                                              tst_CliNative's message-box rows on a static seam build of the same commit
+#   aether-serial-bridge-linux-x64             static Qt, static libstdc++/libgcc, built in ubuntu:22.04:
+#                                              glibc_audit <= 2.35 (INV-87), no test seams, the systemd suite on
+#                                              the release binary (release mode) and on the static seam build
+#                                              (with the seam window, dynamic Qt: window_lifecycle_native, WS-17)
+#   aether-serial-bridge-gui-x86_64.AppImage   the window (dynamic Qt) embedding the x64 release binary,
+#                                              byte for byte; its --install in the systemd suite (extract mode);
+#                                              every NEEDED bundled or a stock-desktop host library (host-libs,
+#                                              v1.1 fix) and the window started in a stock Ubuntu 26.04 desktop
+#                                              userland (asb-stock-desktop-2604:<Dockerfile hash>), each with its control
+#   aether-serial-bridge-linux-arm64           the arm64 binary (a hosted arm64 runner, unless ASB_ARM64_RUNNERS is 'false'):
+#                                              the same audits and the systemd suite in release mode
+#   aether-serial-bridge-gui-aarch64.AppImage  the arm64 window (a shared Qt built from source: aqt's arm64 QtGui needs
+#                                              GLIBC_2.38), embedding the arm64 release binary byte for byte; its
+#                                              --install in the arm64 systemd suite; the window self-test offscreen;
+#                                              host-libs and the stock-desktop start, as on x64
+#   SHA256SUMS
+#
+# Triggers. A tag push `v*` builds, gates and creates a DRAFT GitHub release (the only job with contents: write);
+# a maintainer completes docs/release-checklist.md and publishes the draft. workflow_dispatch is the DRY RUN: the
+# same builds and gates, the files uploaded as workflow artifacts, never a release (the publish job's condition
+# names the tag push and nothing else; no input can reach it).
+#
+# Runners: GitHub-hosted, the labels ci.yml uses (linux-x64 and checksums on ubuntu-22.04, linux-arm64 on
+# ubuntu-24.04-arm, windows on windows-latest, publish on ubuntu-latest). The arm64 job follows ci.yml's switch, the
+# repository variable ASB_ARM64_RUNNERS: unless it is 'false', a tag needs the arm64 files; when it is 'false', a tag
+# releases without them (the checksums job accepts the skipped job; the release checklist says so).
+#
+# Static Qt: the qt-static job runs qt-static.yml first (each profile restored from the Actions cache, or built once
+# and saved), then every build job restores the same entry by the same key. Should an entry be missing all the same,
+# the build script builds the profile in place: slower, never wrong.
+#
+# The v1.0 program fixture (tests/systemd/fixtures.env) is not available to this repository's CI: the systemd suites
+# get a fixtures folder that does not exist, so the v1.0 cases SKIP and say why (release checklist, section 1).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------------------------
+  # qt-static: every static Qt profile restored or built once (qt-static.yml), before the jobs that link it.
+  # ---------------------------------------------------------------------------------------------
+  qt-static:
+    uses: ./.github/workflows/qt-static.yml
+
+  # ---------------------------------------------------------------------------------------------
+  # linux-x64: the release binary, the AppImage, their gates and the systemd suite.
+  # ---------------------------------------------------------------------------------------------
+  linux-x64:
+    runs-on: ubuntu-22.04
+    needs: qt-static
+    # !cancelled(): a failed qt-static job (another profile, say) does not skip this one: it builds its own profiles
+    # on a cache miss.
+    if: ${{ !cancelled() && (github.event_name != 'push' || startsWith(github.ref, 'refs/tags/v')) }}
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash   # -eo pipefail: a failing build piped into tee fails its own step
+    env:
+      QT_VERSION: '6.12.0'
+      QT_PACKAGE_REVISION: '202609280346'
+      AQTINSTALL_VERSION: '3.3.0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      # As AetherSDR's CI: the hosted image's toolchains this job never uses are deleted for disk (the Docker images,
+      # Qt trees and build trees together outgrow the runner's free space).
+      - name: Free runner disk
+        run: |
+          df -h / "$GITHUB_WORKSPACE"
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / "$GITHUB_WORKSPACE"
+
+      # The caches live under the runner's temp directory, at the paths qt-static.yml and ci.yml use (an Actions cache
+      # entry is restored only to the path it was saved from): the static Qt (qt-static/), the window's dynamic Qt (aqt,
+      # qt-cache/: the entry ci.yml's Linux legs keep) and the AppImage tools.
+      - name: Cache locations
+        run: |
+          d="$RUNNER_TEMP"
+          mkdir -p "$d/qt-static" "$d/qt-cache" "$d/appimage-tools"
+          echo "ASB_CACHE=$d" >> "$GITHUB_ENV"
+          mkdir -p dist seams rel-bin home logs
+
+      - name: Build the build and systemd containers
+        run: |
+          docker build --pull --label org.aethersdr.asb-ci=containers -t asb-build-2204 -f ci/containers/build-ubuntu2204.Dockerfile ci/containers
+          docker build --pull --label org.aethersdr.asb-ci=containers -t asb-systemd-bookworm -f ci/containers/systemd-bookworm.Dockerfile ci/containers
+          # v1.1 WS-15: another distribution's polkit (the Fedora cases).
+          docker build --pull --label org.aethersdr.asb-ci=containers -t asb-polkit-fedora -f tests/polkit/fedora.Dockerfile tests/polkit
+
+      - name: Static Qt cache key
+        id: qtkey
+        run: |
+          out="$(docker run --rm -v "$PWD:/src:ro" -w /src asb-build-2204 \
+            packaging/qt-static/build-qt-static.sh --key linux-headless /qt-static)"
+          echo "key=qt-static-linux-x64-linux-headless-$(sed -n 's/^QT_STATIC_KEY=//p' <<<"$out")" >> "$GITHUB_OUTPUT"
+          echo "path=$ASB_CACHE/qt-static/$(basename "$(sed -n 's/^QT_STATIC_PREFIX=//p' <<<"$out")")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the static Qt (qt-static.yml saved it)
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ steps.qtkey.outputs.path }}
+          key: ${{ steps.qtkey.outputs.key }}
+
+      - name: Static Qt (linux-headless; a stamp check on the restored prefix)
+        run: |
+          docker run --rm --label org.aethersdr.asb-ci=containers \
+            -u "$(id -u):$(id -g)" -e HOME=/work/home -v "$PWD:/src:ro" -v "$PWD/home:/work/home" \
+            -v "$ASB_CACHE/qt-static:/qt-static" -w /src asb-build-2204 \
+            packaging/qt-static/build-qt-static.sh linux-headless /qt-static | tee logs/qt-static.log
+          echo "QT_STATIC=$(sed -n 's/^QT_STATIC_PREFIX=//p' logs/qt-static.log | tail -1)" >> "$GITHUB_ENV"
+
+      - name: Release binary and its seam build
+        run: |
+          docker run --rm --label org.aethersdr.asb-ci=containers \
+            -u "$(id -u):$(id -g)" -e HOME=/work/home -v "$PWD:/src" -v "$PWD/home:/work/home" \
+            -v "$ASB_CACHE/qt-static:/qt-static:ro" -w /src asb-build-2204 bash -euxo pipefail -c '
+              packaging/linux/build-release.sh release "$0" /src/build-rel /src/dist x64
+              packaging/linux/build-release.sh seams "$0" /src/build-seams /src/seams x64
+            ' "$QT_STATIC"
+          cp dist/aether-serial-bridge-linux-x64 rel-bin/aether-serial-bridge
+
+      - name: Restore Qt (aqt, the window's dynamic Qt; the entry ci.yml's Linux legs keep)
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ runner.temp }}/qt-cache
+          key: qt-${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-linux-gcc_64-aqt${{ env.AQTINSTALL_VERSION }}-sp-rv1
+
+      - name: AppImage (the window, embedding the release binary)
+        run: |
+          docker run --rm --label org.aethersdr.asb-ci=containers \
+            -u "$(id -u):$(id -g)" -e HOME=/work/home -v "$PWD:/src" -v "$PWD/home:/work/home" \
+            -v "$ASB_CACHE/qt-cache:/qt" -v "$ASB_CACHE/appimage-tools:/tools" -w /src asb-build-2204 bash -euxo pipefail -c '
+              ci/scripts/install-qt.sh /qt linux_gcc_64
+              packaging/linux/appimage/build-appimage.sh "/qt/$0/gcc_64" /src/build-appimage \
+                /src/dist/aether-serial-bridge-linux-x64 /src/dist /tools
+              # INV-121 control (v1.1): the window configured as v1.0 configured it, WITHOUT the release program'"'"'s
+              # digest, carries its own tree'"'"'s development program'"'"'s digest; the digest gate must refuse it.
+              cmake -S /src -B /src/build-digest-control -G Ninja -DCMAKE_BUILD_TYPE=Release -DASB_BUILD_GUI=ON \
+                -DASB_BUILD_TESTS=OFF -DASB_WERROR=ON -DASB_REQUIRE_PINNED_QT=ON -DCMAKE_PREFIX_PATH="/qt/$0/gcc_64"
+              cmake --build /src/build-digest-control --target aether-serial-bridge-gui
+              python3 tools/release_audit.py digest-control /src/build-digest-control/bin/aether-serial-bridge-gui \
+                /src/dist/aether-serial-bridge-linux-x64 /src/dist/aether-serial-bridge-linux-x64
+            ' "$QT_VERSION"
+
+      # v1.1 WS-17: the seam window for sysd::window_lifecycle_native, built from this commit as ci.yml's containers leg
+      # builds it: the window with the test seams against the same dynamic Qt (aqt, gcc_64) the AppImage's window ships
+      # with, and the program beside it from the SAME build directory (the window's compiled-in program digest, WS-14,
+      # is that program's). There is no static GUI Qt on Linux x64: the shipped window is dynamic Qt too. Only these
+      # two targets are built, in their own directory; nothing from it is uploaded or shipped.
+      - name: The seam window (window_lifecycle_native in the seam-build suite)
+        run: |
+          docker run --rm --label org.aethersdr.asb-ci=containers \
+            -u "$(id -u):$(id -g)" -e HOME=/work/home -v "$PWD:/src" -v "$PWD/home:/work/home" \
+            -v "$ASB_CACHE/qt-cache:/qt" -w /src asb-build-2204 bash -euxo pipefail -c '
+              ci/scripts/install-qt.sh /qt linux_gcc_64
+              cmake -S /src -B /src/build-gui-seams -G Ninja -DCMAKE_BUILD_TYPE=Release \
+                -DASB_BUILD_GUI=ON -DASB_BUILD_TESTS=ON -DASB_WERROR=ON \
+                -DASB_REQUIRE_PINNED_QT=ON -DCMAKE_PREFIX_PATH="/qt/$0/gcc_64"
+              cmake --build /src/build-gui-seams --target aether-serial-bridge-gui aether-serial-bridge
+            ' "$QT_VERSION"
+
+      # INV-87 and the release audits, on the files that ship.
+      - name: Gates (glibc <= 2.35, static runtime, no test seams, the AppImage embeds the release binary)
+        run: |
+          docker run --rm --label org.aethersdr.asb-ci=containers -u "$(id -u):$(id -g)" -e HOME=/work/home \
+            -v "$PWD:/src" -v "$PWD/home:/work/home" -v "$ASB_CACHE/appimage-tools:/tools:ro" -w /src asb-build-2204 \
+            bash -euxo pipefail -c '
+              rel=dist/aether-serial-bridge-linux-x64
+              ver="$($rel --version | cut -d" " -f2)"
+              cmake -DEXE=$rel -DOBJDUMP=objdump -DMAX=2.35 -P cmake/GlibcAudit.cmake
+              python3 tools/release_audit.py stamp $rel "$ver"
+              # An ALLOWLIST of shared libraries (anything else fails), with its control on the dynamic-Qt window.
+              python3 tools/release_audit.py needed $rel libc.so.6 libm.so.6 "ld-linux-*"
+              python3 tools/release_audit.py seams $rel
+              python3 tools/release_audit.py seams-control seams/aether-serial-bridge
+              rm -rf /tmp/ai && mkdir /tmp/ai && cd /tmp/ai
+              /src/dist/aether-serial-bridge-gui-x86_64.AppImage --appimage-extract >/dev/null
+              cd /src
+              python3 tools/release_audit.py same /tmp/ai/squashfs-root/usr/libexec/aether-serial-bridge $rel
+              # INV-121 (v1.1): the digest compiled into the window is the embedded program'"'"'s, which is the release
+              # program (its control is in the AppImage step); every ELF file in the image needs glibc 2.35 at most,
+              # with its control: the same tree with a planted plugin that needs GLIBC_2.38 must fail the walk.
+              python3 tools/release_audit.py digest /tmp/ai/squashfs-root/AppRun /tmp/ai/squashfs-root/usr/libexec/aether-serial-bridge $rel
+              python3 tools/release_audit.py glibc-tree /tmp/ai/squashfs-root 2.35
+              tools/glibc-tree-control.sh /tmp/ai/squashfs-root
+              # v1.1 fix (the window on stock Ubuntu): every NEEDED in the image is bundled or a library a stock
+              # desktop installs (never libOpenGL.so.0), with its control: the window given NEEDED libOpenGL.so.0
+              # must fail the walk by name. The planted window is kept for the stock-desktop start below.
+              python3 tools/release_audit.py host-libs /tmp/ai/squashfs-root packaging/linux/appimage/host-libs.allowlist.txt
+              tools/host-libs-control.sh /tmp/ai/squashfs-root packaging/linux/appimage/host-libs.allowlist.txt \
+                /tools/linuxdeploy-x86_64.AppImage /src/host-libs-control
+              python3 tools/release_audit.py stamp /tmp/ai/squashfs-root/usr/bin/aether-serial-bridge-gui "$ver"
+              python3 tools/release_audit.py needed-control /tmp/ai/squashfs-root/usr/bin/aether-serial-bridge-gui libc.so.6 libm.so.6 "ld-linux-*"
+              cmake -DEXE=/tmp/ai/squashfs-root/usr/bin/aether-serial-bridge-gui -DOBJDUMP=objdump -DMAX=2.35 -P cmake/GlibcAudit.cmake
+              python3 tools/release_audit.py seams /tmp/ai/squashfs-root/usr/bin/aether-serial-bridge-gui
+              # The window, from the image, after real initialisation (offscreen platform): exposed and painted.
+              # Its exit status counts too (a crash or hang in teardown, after the report, fails).
+              rc=0; QT_QPA_PLATFORM=offscreen timeout -k 10 120 /tmp/ai/squashfs-root/AppRun --self-test-init > /tmp/ai/selftest.out || rc=$?
+              python3 tools/release_audit.py gui-report /tmp/ai/selftest.out "$rc"
+              $rel --version
+              if [ "${GITHUB_REF_TYPE:-}" = tag ]; then
+                test "$($rel --version)" = "aether-serial-bridge ${GITHUB_REF_NAME#v}" || { echo "the version is not the tag"; exit 1; }
+              fi
+            '
+        env:
+          GITHUB_REF_TYPE: ${{ github.ref_type }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+
+      # v1.1 fix (the window on stock Ubuntu): the Gates step's self-test runs in the build image, which has every GL
+      # library, so a host library a stock desktop lacks (libOpenGL.so.0, 2026-10-19) passed it. Here the AppImage
+      # starts in a stock Ubuntu 26.04 desktop userland (ubuntu-desktop-minimal, nothing of ours; built in this job by
+      # ci/scripts/stock-desktop-image.sh, the longest step of a release), with its control: the planted window must
+      # not start there.
+      - name: The window starts on a stock Ubuntu desktop (v1.1 fix), with its control
+        run: |
+          # No --pull: the base is pinned by digest and the tag is the Dockerfile's hash (built once per version).
+          image="$(ci/scripts/stock-desktop-image.sh)"
+          tools/stock-desktop-start.sh "$image" dist/aether-serial-bridge-gui-x86_64.AppImage \
+            host-libs-control/aether-serial-bridge-gui "$PWD/stock-desktop-x64"
+
+      # The whole suite on the static seam build (the same commit, Qt and flags as the release binary)...
+      # --gui-bin: the seam window above (window_lifecycle_native FAILs without it, as in ci.yml's containers leg). --qt
+      # mounts the dynamic Qt the window finds through its RUNPATH; the static seam build loads nothing from it.
+      - name: systemd suite on the static seam build
+        run: |
+          python3 tests/systemd/driver.py --bin seams --qt "$ASB_CACHE/qt-cache/$QT_VERSION/gcc_64" \
+            --gui-bin build-gui-seams/bin --image asb-systemd-bookworm \
+            --fedora-image asb-polkit-fedora --fixtures "$PWD/no-v10-fixture" \
+            --work "$PWD/sysd-work-seams" --jobs 2
+
+      # ...and on the release binary itself: every product operation runs the shipped bytes (see tests/systemd/sysd.py).
+      - name: systemd suite on the release binary (release mode, activation_matrix, the AppImage's --install)
+        run: |
+          python3 tests/systemd/driver.py --release --bin rel-bin --seam-bin seams --dist dist --qt none \
+            --fedora-image asb-polkit-fedora --fixtures "$PWD/no-v10-fixture" \
+            --image asb-systemd-bookworm --work "$PWD/sysd-work-release" --jobs 2
+
+      - name: Upload the Linux x64 artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-linux-x64
+          path: |
+            dist/aether-serial-bridge-linux-x64
+            dist/aether-serial-bridge-gui-x86_64.AppImage
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------------------------
+  # linux-arm64: the arm64 binary on a hosted arm64 runner (every tag and dry run, unless ASB_ARM64_RUNNERS is 'false').
+  # ---------------------------------------------------------------------------------------------
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    needs: qt-static
+    # The arm64 switch (ci.yml's header).
+    # !cancelled(): a failed qt-static job (another profile, say) does not skip this one: it builds its own profiles
+    # on a cache miss.
+    if: ${{ !cancelled() && (github.event_name != 'push' || startsWith(github.ref, 'refs/tags/v')) && vars.ASB_ARM64_RUNNERS != 'false' }}
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    env:
+      QT_VERSION: '6.12.0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      # As AetherSDR's CI: the hosted image's toolchains this job never uses are deleted for disk (the Docker images,
+      # Qt trees and build trees together outgrow the runner's free space).
+      - name: Free runner disk
+        run: |
+          df -h / "$GITHUB_WORKSPACE"
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / "$GITHUB_WORKSPACE"
+
+      # The static Qt and the window's shared Qt (restored below from the entries qt-static.yml saved) and the
+      # AppImage tools, under the runner's temp directory.
+      - name: Cache locations
+        run: |
+          d="$RUNNER_TEMP"
+          mkdir -p "$d/qt-static" "$d/appimage-tools"
+          echo "ASB_CACHE=$d" >> "$GITHUB_ENV"
+          mkdir -p dist seams rel-bin home logs
+
+      - name: Build the build and systemd containers
+        run: |
+          docker build --pull --label org.aethersdr.asb-ci=containers -t asb-build-2204 -f ci/containers/build-ubuntu2204.Dockerfile ci/containers
+          docker build --pull --label org.aethersdr.asb-ci=containers -t asb-systemd-bookworm -f ci/containers/systemd-bookworm.Dockerfile ci/containers
+          # v1.1 WS-15: another distribution's polkit (the Fedora cases).
+          docker build --pull --label org.aethersdr.asb-ci=containers -t asb-polkit-fedora -f tests/polkit/fedora.Dockerfile tests/polkit
+
+      - name: Qt cache key (linux-headless)
+        id: qtkey_linux_headless
+        run: |
+          out="$(docker run --rm -v "$PWD:/src:ro" -w /src asb-build-2204 \
+            packaging/qt-static/build-qt-static.sh --key linux-headless /qt-static)"
+          echo "key=qt-static-linux-arm64-linux-headless-$(sed -n 's/^QT_STATIC_KEY=//p' <<<"$out")" >> "$GITHUB_OUTPUT"
+          echo "path=$ASB_CACHE/qt-static/$(basename "$(sed -n 's/^QT_STATIC_PREFIX=//p' <<<"$out")")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the Qt (linux-headless; qt-static.yml saved it)
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ steps.qtkey_linux_headless.outputs.path }}
+          key: ${{ steps.qtkey_linux_headless.outputs.key }}
+
+      - name: Static Qt (linux-headless, arm64)
+        run: |
+          docker run --rm --label org.aethersdr.asb-ci=containers \
+            -u "$(id -u):$(id -g)" -e HOME=/work/home -v "$PWD:/src:ro" -v "$PWD/home:/work/home" \
+            -v "$ASB_CACHE/qt-static:/qt-static" -w /src asb-build-2204 \
+            packaging/qt-static/build-qt-static.sh linux-headless /qt-static | tee logs/qt-static.log
+          echo "QT_STATIC=$(sed -n 's/^QT_STATIC_PREFIX=//p' logs/qt-static.log | tail -1)" >> "$GITHUB_ENV"
+
+      # The window's Qt: SHARED, built from source in ubuntu:22.04 (aqt's linux_arm64 QtGui needs GLIBC_2.38).
+      - name: Qt cache key (linux-gui-shared)
+        id: qtkey_linux_gui_shared
+        run: |
+          out="$(docker run --rm -v "$PWD:/src:ro" -w /src asb-build-2204 \
+            packaging/qt-static/build-qt-static.sh --key linux-gui-shared /qt-static)"
+          echo "key=qt-static-linux-arm64-linux-gui-shared-$(sed -n 's/^QT_STATIC_KEY=//p' <<<"$out")" >> "$GITHUB_OUTPUT"
+          echo "path=$ASB_CACHE/qt-static/$(basename "$(sed -n 's/^QT_STATIC_PREFIX=//p' <<<"$out")")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the Qt (linux-gui-shared; qt-static.yml saved it)
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ steps.qtkey_linux_gui_shared.outputs.path }}
+          key: ${{ steps.qtkey_linux_gui_shared.outputs.key }}
+
+      - name: Shared Qt for the window (linux-gui-shared, arm64)
+        run: |
+          docker run --rm --label org.aethersdr.asb-ci=containers \
+            -u "$(id -u):$(id -g)" -e HOME=/work/home -v "$PWD:/src:ro" -v "$PWD/home:/work/home" \
+            -v "$ASB_CACHE/qt-static:/qt-static" -w /src asb-build-2204 \
+            packaging/qt-static/build-qt-static.sh linux-gui-shared /qt-static | tee logs/qt-gui.log
+          echo "QT_GUI=$(sed -n 's/^QT_STATIC_PREFIX=//p' logs/qt-gui.log | tail -1)" >> "$GITHUB_ENV"
+
+      - name: Release binary and its seam build, gates
+        run: |
+          docker run --rm --label org.aethersdr.asb-ci=containers \
+            -u "$(id -u):$(id -g)" -e HOME=/work/home -e GITHUB_REF_TYPE -e GITHUB_REF_NAME \
+            -v "$PWD:/src" -v "$PWD/home:/work/home" -v "$ASB_CACHE/qt-static:/qt-static:ro" -w /src asb-build-2204 \
+            bash -euxo pipefail -c '
+              packaging/linux/build-release.sh release "$0" /src/build-rel /src/dist arm64
+              packaging/linux/build-release.sh seams "$0" /src/build-seams /src/seams arm64
+              rel=dist/aether-serial-bridge-linux-arm64
+              cmake -DEXE=$rel -DOBJDUMP=objdump -DMAX=2.35 -P cmake/GlibcAudit.cmake
+              python3 tools/release_audit.py stamp $rel "$($rel --version | cut -d" " -f2)"
+              python3 tools/release_audit.py needed $rel libc.so.6 libm.so.6 "ld-linux-*"
+              python3 tools/release_audit.py needed-control /usr/bin/python3 libc.so.6 libm.so.6 "ld-linux-*"
+              python3 tools/release_audit.py seams $rel
+              python3 tools/release_audit.py seams-control seams/aether-serial-bridge
+              $rel --version
+              if [ "${GITHUB_REF_TYPE:-}" = tag ]; then
+                test "$($rel --version)" = "aether-serial-bridge ${GITHUB_REF_NAME#v}" || { echo "the version is not the tag"; exit 1; }
+              fi
+            ' "$QT_STATIC"
+          cp dist/aether-serial-bridge-linux-arm64 rel-bin/aether-serial-bridge
+
+      - name: AppImage (the window, embedding the arm64 release binary)
+        run: |
+          docker run --rm --label org.aethersdr.asb-ci=containers \
+            -u "$(id -u):$(id -g)" -e HOME=/work/home -v "$PWD:/src" -v "$PWD/home:/work/home" \
+            -v "$ASB_CACHE/qt-static:/qt-static:ro" -v "$ASB_CACHE/appimage-tools:/tools" -w /src asb-build-2204 \
+            packaging/linux/appimage/build-appimage.sh "$QT_GUI" /src/build-appimage \
+              /src/dist/aether-serial-bridge-linux-arm64 /src/dist /tools
+
+      - name: AppImage gates (embedded program, glibc <= 2.35, no test seams, the window exposed and painted)
+        run: |
+          docker run --rm --label org.aethersdr.asb-ci=containers -u "$(id -u):$(id -g)" \
+            -e HOME=/work/home -v "$PWD:/src" -v "$PWD/home:/work/home" -v "$ASB_CACHE/appimage-tools:/tools:ro" \
+            -w /src asb-build-2204 bash -euxo pipefail -c '
+              rm -rf /tmp/ai && mkdir /tmp/ai && cd /tmp/ai
+              /src/dist/aether-serial-bridge-gui-aarch64.AppImage --appimage-extract >/dev/null
+              cd /src
+              rel=dist/aether-serial-bridge-linux-arm64
+              python3 tools/release_audit.py same /tmp/ai/squashfs-root/usr/libexec/aether-serial-bridge $rel
+              gui=/tmp/ai/squashfs-root/usr/bin/aether-serial-bridge-gui
+              # INV-121 (v1.1): the window'"'"'s compiled digest is the embedded release program'"'"'s; every ELF file in
+              # the image (not only libQt6*) needs glibc 2.35 at most, with the planted-plugin control. The digest
+              # gate'"'"'s control (a window built without the digest) runs on x64 only (it is a second window build).
+              python3 tools/release_audit.py digest /tmp/ai/squashfs-root/AppRun /tmp/ai/squashfs-root/usr/libexec/aether-serial-bridge $rel
+              python3 tools/release_audit.py glibc-tree /tmp/ai/squashfs-root 2.35
+              tools/glibc-tree-control.sh /tmp/ai/squashfs-root
+              # v1.1 fix (the window on stock Ubuntu): the host-libs walk and its control, as on x64.
+              python3 tools/release_audit.py host-libs /tmp/ai/squashfs-root packaging/linux/appimage/host-libs.allowlist.txt
+              tools/host-libs-control.sh /tmp/ai/squashfs-root packaging/linux/appimage/host-libs.allowlist.txt \
+                /tools/linuxdeploy-aarch64.AppImage /src/host-libs-control
+              python3 tools/release_audit.py stamp $gui "$($rel --version | cut -d" " -f2)"
+              cmake -DEXE=$gui -DOBJDUMP=objdump -DMAX=2.35 -P cmake/GlibcAudit.cmake
+              python3 tools/release_audit.py needed-control $gui libc.so.6 libm.so.6 "ld-linux-*"
+              python3 tools/release_audit.py seams $gui
+              # Its exit status counts too (a crash or hang in teardown, after the report, fails).
+              rc=0; QT_QPA_PLATFORM=offscreen timeout -k 10 180 /tmp/ai/squashfs-root/AppRun --self-test-init > /tmp/ai/selftest.out || rc=$?
+              python3 tools/release_audit.py gui-report /tmp/ai/selftest.out "$rc"
+            '
+
+      # v1.1 fix: the arm64 window on a stock Ubuntu 26.04 desktop userland (arm64 ubuntu-desktop-minimal), as on x64.
+      - name: The window starts on a stock Ubuntu desktop (v1.1 fix), with its control
+        run: |
+          # No --pull: the base is pinned by digest and the tag is the Dockerfile's hash (built once per version).
+          image="$(ci/scripts/stock-desktop-image.sh)"
+          tools/stock-desktop-start.sh "$image" dist/aether-serial-bridge-gui-aarch64.AppImage \
+            host-libs-control/aether-serial-bridge-gui "$PWD/stock-desktop-arm64"
+
+      # The systemd suite in release mode on the arm64 release bytes (as linux-x64 runs it on x64), with the arm64 seam
+      # build of the same commit for failure points and probes, and the arm64 AppImage's --install (extract mode).
+      - name: systemd suite on the arm64 release binary (release mode, activation_matrix)
+        run: |
+          python3 tests/systemd/driver.py --release --bin rel-bin --seam-bin seams --dist dist --qt none \
+            --fedora-image asb-polkit-fedora --fixtures "$PWD/no-v10-fixture" \
+            --image asb-systemd-bookworm --work "$PWD/sysd-work-release" --jobs 2
+
+      - name: Upload the Linux arm64 artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-linux-arm64
+          path: |
+            dist/aether-serial-bridge-linux-arm64
+            dist/aether-serial-bridge-gui-aarch64.AppImage
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------------------------
+  # windows: the zip and every gate on the UNZIPPED tree.
+  # ---------------------------------------------------------------------------------------------
+  windows:
+    runs-on: windows-latest
+    needs: qt-static
+    # !cancelled(): a failed qt-static job (another profile, say) does not skip this one: it builds its own profiles
+    # on a cache miss.
+    if: ${{ !cancelled() && (github.event_name != 'push' || startsWith(github.ref, 'refs/tags/v')) }}
+    timeout-minutes: 360
+    env:
+      QT_VERSION: '6.12.0'
+      QT_PACKAGE_REVISION: '202609280346'
+      AQTINSTALL_GIT_REF: '076e1659807d0b362a3ed684d54c2e9c775eb9c7'
+      PY7ZR_VERSION: '1.1.3'
+      QT_ARCH: 'win64_msvc2022_64'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: MSVC environment
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x64
+
+      # The same fixed cache root and keys as qt-static.yml, which saved both prefixes.
+      - name: Static Qt cache keys
+        id: qtkey
+        shell: pwsh
+        run: |
+          foreach ($p in 'windows-gui', 'windows-headless') {
+            $out = pwsh -NoProfile -File packaging/qt-static/build-qt-static.ps1 -QtProfile $p -CacheRoot C:\asb-qt-static -KeyOnly
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $key = ($out | Select-String '^QT_STATIC_KEY=(.*)$').Matches[0].Groups[1].Value
+            $prefix = ($out | Select-String '^QT_STATIC_PREFIX=(.*)$').Matches[0].Groups[1].Value
+            "$p-key=qt-static-windows-x64-$p-$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            "$p-path=$prefix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+      - name: Restore the static Qt (windows-gui)
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ steps.qtkey.outputs.windows-gui-path }}
+          key: ${{ steps.qtkey.outputs.windows-gui-key }}
+
+      - name: Restore the static Qt (windows-headless)
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ steps.qtkey.outputs.windows-headless-path }}
+          key: ${{ steps.qtkey.outputs.windows-headless-key }}
+
+      - name: Static Qt (windows-gui, windows-headless; stamp checks on the restored prefixes)
+        shell: pwsh
+        run: |
+          foreach ($p in 'windows-gui', 'windows-headless') {
+            pwsh -NoProfile -File packaging/qt-static/build-qt-static.ps1 -QtProfile $p -CacheRoot C:\asb-qt-static | Tee-Object -Variable log
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $prefix = ($log | Select-String '^QT_STATIC_PREFIX=(.*)$' | Select-Object -Last 1).Matches[0].Groups[1].Value
+            $name = if ($p -eq 'windows-gui') { 'QT_STATIC_GUI' } else { 'QT_STATIC_HEADLESS' }
+            "$name=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
+
+      - name: The zip (and the static seam build, never shipped)
+        id: zip
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File packaging/windows/build-release.ps1 -QtGui $env:QT_STATIC_GUI -QtHeadless $env:QT_STATIC_HEADLESS `
+            -BuildRoot "$env:RUNNER_TEMP\rb" -OutDir "$env:RUNNER_TEMP\rel" -Seams
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # The dynamic-Qt test tree: only the test programs that drive the release exes (and the seam audit's control).
+      # The Qt is the Actions cache entry ci.yml's windows leg keeps (same path, same key), installed here on a miss.
+      - name: Qt location (the path ci.yml's windows leg caches)
+        shell: pwsh
+        run: |
+          "QT_ROOT=$env:RUNNER_WORKSPACE\Qt" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Restore Qt (aqt)
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ env.QT_ROOT }}
+          key: qt-${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-windows-${{ env.QT_ARCH }}-aqt${{ env.AQTINSTALL_GIT_REF }}-sp-rv1
+
+      - name: Qt (aqt) for the test programs
+        shell: pwsh
+        run: |
+          $root = $env:QT_ROOT
+          $evidence = "$root\.installed-$env:QT_VERSION-$env:QT_PACKAGE_REVISION-$env:QT_ARCH.txt"
+          if (-not (Test-Path $evidence)) {
+            python -m venv "$env:RUNNER_TEMP\aqtvenv"
+            & "$env:RUNNER_TEMP\aqtvenv\Scripts\pip.exe" install -q "git+https://github.com/miurahr/aqtinstall.git@$env:AQTINSTALL_GIT_REF" "py7zr==$env:PY7ZR_VERSION"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
+            New-Item -ItemType Directory -Force ("$root\$env:QT_VERSION\" + ($env:QT_ARCH -replace '^win64_', '')) | Out-Null
+            Remove-Item -Force aqtinstall.log -ErrorAction SilentlyContinue
+            & "$env:RUNNER_TEMP\aqtvenv\Scripts\aqt.exe" install-qt windows desktop $env:QT_VERSION $env:QT_ARCH -m qtserialport --external $sevenZip --outputdir $root
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            python ci/scripts/check_qt_revision.py install --log aqtinstall.log --version $env:QT_VERSION --revision $env:QT_PACKAGE_REVISION --out $evidence
+            if ($LASTEXITCODE -ne 0) { Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue; exit 1 }
+          }
+          python ci/scripts/check_qt_revision.py evidence --file $evidence --version $env:QT_VERSION --revision $env:QT_PACKAGE_REVISION
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $qt = "$root\$env:QT_VERSION\" + ($env:QT_ARCH -replace '^win64_', '')
+          "CMAKE_PREFIX_PATH=$qt" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$qt\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Test programs (dynamic Qt)
+        id: tests
+        shell: pwsh
+        run: |
+          cmake --preset windows-dev
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build --preset windows-dev --target tst_CliNative tst_ServiceNative tst_ServiceScheduleNative asb_win_lock_helper asb_win_qual asb_marker_plant aether-serial-bridge
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # From here every gate runs whenever what it needs was built, so one run shows every failure.
+      - name: Unzip the release zip
+        id: unzip
+        if: ${{ !cancelled() && steps.zip.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $u = "$env:RUNNER_TEMP\unzipped"
+          Remove-Item -Recurse -Force $u -ErrorAction SilentlyContinue
+          Expand-Archive -Path "$env:RUNNER_TEMP\rel\aether-serial-bridge-windows-x64.zip" -DestinationPath $u
+
+      - name: Gates on the unzipped tree (contents, import audit + load flag, digest, no test seams)
+        if: ${{ !cancelled() && steps.unzip.outcome == 'success' && steps.tests.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $zip = "$env:RUNNER_TEMP\rel\aether-serial-bridge-windows-x64.zip"
+          python tools/release_audit.py zip $zip AetherSerialBridge.exe aether-serial-bridge.exe README.txt LICENSE.txt THIRD-PARTY-NOTICES.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $u = "$env:RUNNER_TEMP\unzipped"
+          $dumpbin = (Get-Command dumpbin.exe -ErrorAction Stop).Source
+          $bad = 0
+          foreach ($e in 'AetherSerialBridge', 'aether-serial-bridge') {
+            $out = cmake "-DEXE=$u\$e.exe" "-DDUMPBIN=$dumpbin" "-DALLOWLIST=$PWD\cmake\ImportAudit.allowlist.$e.windows.txt" -DLOADFLAG=ON -P cmake/ImportAudit.cmake 2>&1
+            $out
+            if ($LASTEXITCODE -ne 0 -or -not ($out -match "ImportAudit: OK $e.exe") -or -not ($out -match 'carries the dependent load flag 0x800')) { $bad = 1 }
+          }
+          if ($bad) { Write-Host 'import audit failed'; exit 1 }
+          python tools/release_audit.py digest "$u\AetherSerialBridge.exe" "$u\aether-serial-bridge.exe"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python tools/release_audit.py seams "$u\AetherSerialBridge.exe" "$u\aether-serial-bridge.exe"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # v1.1 D61: both executables carry the build stamp of this version.
+          $ver = ((& "$u\aether-serial-bridge.exe" --version) -split ' ')[1]
+          foreach ($e in 'AetherSerialBridge', 'aether-serial-bridge') {
+            python tools/release_audit.py stamp "$u\$e.exe" $ver
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          python tools/release_audit.py seams-control build\windows-dev\bin\aether-serial-bridge.exe "$env:RUNNER_TEMP\rel\seams\aether-serial-bridge.exe"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $v = & "$u\aether-serial-bridge.exe" --version
+          $v
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $v -ne "aether-serial-bridge $($env:GITHUB_REF_NAME.TrimStart('v'))") { Write-Host 'the version is not the tag'; exit 1 }
+        env:
+          GITHUB_REF_TYPE: ${{ github.ref_type }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+
+      - name: release_gui_self_test (INV-88) on the unzipped tree
+        if: ${{ !cancelled() && steps.unzip.outcome == 'success' && steps.tests.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File packaging/windows/release-gui-self-test.ps1 -Zip "$env:RUNNER_TEMP\rel\aether-serial-bridge-windows-x64.zip" `
+            -Plant build\windows-dev\tests\win\release\plant\asb_marker_plant.dll -Work "$env:RUNNER_TEMP\selftest" `
+            -Dumpbin (Get-Command dumpbin.exe).Source
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Deployed-tree test (install from the unzipped tree, apply, status, the installed folder)
+        if: ${{ !cancelled() && steps.unzip.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File packaging/windows/deployed-tree-test.ps1 -Zip "$env:RUNNER_TEMP\rel\aether-serial-bridge-windows-x64.zip" -Work "$env:RUNNER_TEMP\deployed"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # The release exe has no test seams: tst_CliNative's rows that answer a message box through ASB_TEST_MESSAGEBOX
+      # (uninstallFromAppsEntry, appsEntryRetryAfterLockCleanupFailure) skip here with that reason, and run on the
+      # static seam build below.
+      - name: tst_CliNative on the unzipped exe
+        if: ${{ !cancelled() && steps.unzip.outcome == 'success' && steps.tests.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $env:ASB_HEADLESS_EXE = "$env:RUNNER_TEMP\unzipped\aether-serial-bridge.exe"
+          $env:ASB_HEADLESS_STATIC = '1'
+          $rc = 0
+          foreach ($t in 'tst_CliNative') {
+            $log = "$env:RUNNER_TEMP\$t-release.txt"
+            & "build\windows-dev\bin\$t.exe" -o "$log,txt"
+            if ($LASTEXITCODE -ne 0) { $rc = 1 }
+            # A child a killed row left running can still hold the log open: say so and go on to the next suite.
+            Get-Content $log -ErrorAction Continue
+            # QtTest exits 0 also when it ran nothing: require its totals with at least one pass and no failure.
+            if (-not (Select-String -Path $log -Pattern '^Totals: [1-9][0-9]* passed, 0 failed' -Quiet -ErrorAction Continue)) { Write-Host "$t ran nothing or failed"; $rc = 1 }
+          }
+          exit $rc
+
+      # activation_matrix refuses a machine with an installation present: the rows above remove what they install,
+      # so a failed row above can be reported again here as the matrix's refusal.
+      - name: activation_matrix (INV-99, Windows half) on the unzipped exes
+        if: ${{ !cancelled() && steps.unzip.outcome == 'success' && steps.tests.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File packaging/windows/activation-matrix.ps1 -Zip "$env:RUNNER_TEMP\rel\aether-serial-bridge-windows-x64.zip" `
+            -Qual build\windows-dev\bin\asb_win_qual.exe -Work "$env:RUNNER_TEMP\matrix"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # The WS-7 service rows need the test seams: on the static seam build of the same commit and headless Qt. So do
+      # tst_CliNative's two message-box rows (WS-16, INV-126), which skip on the release exe above.
+      - name: tst_ServiceNative, tst_ServiceScheduleNative and the tst_CliNative message-box rows on the static seam build
+        if: ${{ !cancelled() && steps.unzip.outcome == 'success' && steps.tests.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $env:ASB_HEADLESS_EXE = "$env:RUNNER_TEMP\rel\seams\aether-serial-bridge.exe"
+          $env:ASB_HEADLESS_STATIC = '1'
+          $env:ASB_WIN_LOCK_HELPER = (Resolve-Path build\windows-dev\bin\asb_win_lock_helper.exe).Path
+          $rc = 0
+          foreach ($t in 'tst_ServiceNative', 'tst_ServiceScheduleNative', 'tst_CliNative') {
+            $log = "$env:RUNNER_TEMP\$t-seams.txt"
+            $rows = if ($t -eq 'tst_CliNative') { @('uninstallFromAppsEntry', 'appsEntryRetryAfterLockCleanupFailure') } else { @() }
+            & "build\windows-dev\bin\$t.exe" -o "$log,txt" @rows
+            if ($LASTEXITCODE -ne 0) { $rc = 1 }
+            Get-Content $log -ErrorAction Continue
+            if (-not (Select-String -Path $log -Pattern '^Totals: [1-9][0-9]* passed, 0 failed, 0 skipped' -Quiet -ErrorAction Continue)) { Write-Host "$t ran nothing, failed or skipped"; $rc = 1 }
+          }
+          exit $rc
+
+      - name: Upload the Windows zip
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-windows-x64
+          path: ${{ runner.temp }}\rel\aether-serial-bridge-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------------------------
+  # checksums: SHA256SUMS over every artifact, the signing hook (off, D6), one artifact with everything.
+  # ---------------------------------------------------------------------------------------------
+  checksums:
+    needs: [linux-x64, windows, linux-arm64]
+    runs-on: ubuntu-22.04
+    # linux-arm64 is skipped only when the arm64 switch is off (ASB_ARM64_RUNNERS 'false'): then a release ships without
+    # the arm64 files. Otherwise every build job must have succeeded.
+    if: always() && needs.linux-x64.result == 'success' && needs.windows.result == 'success' && (needs.linux-arm64.result == 'success' || (needs.linux-arm64.result == 'skipped' && vars.ASB_ARM64_RUNNERS == 'false'))
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      # release-<os>-<arch> only: never release-set, which a re-run of this job would otherwise read back.
+      - name: Download the artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: release-*-*
+          path: collected
+          merge-multiple: true
+
+      - name: SHA256SUMS
+        run: |
+          mkdir -p release
+          cp collected/* release/
+          chmod 0755 release/aether-serial-bridge-linux-* release/*.AppImage
+          python3 tools/release_audit.py sha256sums release release/SHA256SUMS
+          ls -la release
+
+      # D6: v1 is unsigned. The hook runs only when a maintainer turns it on (repository variable ASB_SIGN_RELEASE).
+      - name: Signing hook (off)
+        if: vars.ASB_SIGN_RELEASE == 'true'
+        run: packaging/sign-release.sh release
+
+      - name: Upload the release set
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-set
+          path: release/
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
+
+  # ---------------------------------------------------------------------------------------------
+  # publish: a tag push only, on a GitHub-hosted runner. A DRAFT release; a maintainer publishes it after
+  # docs/release-checklist.md.
+  # ---------------------------------------------------------------------------------------------
+  publish:
+    needs: [checksums]
+    # The one job that can write: no cache, the release set only as this run's artifact.
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Download the release set
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-set
+          path: release
+
+      - name: Create the draft release
+        run: python3 packaging/publish-release.py "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

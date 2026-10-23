@@ -1,0 +1,16 @@
+name: AetherSerialBridge CodeQL configuration
+
+# Restrict analysis to AetherSerialBridge's own first-party C++ sources. Vendored
+# upstream code and build-time-fetched trees are out of scope: their security
+# posture is the responsibility of upstream, and scanning them inflates alert
+# noise that masks signal in our own code.
+
+paths-ignore:
+  # Build trees, including FTXUI fetched by cmake/Ftxui.cmake.
+  - 'build/**'
+
+  # AetherSDR's own files, byte-exact upstream (scanned in aethersdr/AetherSDR).
+  - 'vendor/**'
+
+  # Test harnesses and fixtures — not shipped, run locally + in CI.
+  - 'tests/**'
