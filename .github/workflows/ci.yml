@@ -81,7 +81,7 @@ jobs:
             libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
 
       - name: Restore Qt
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ env.QT_CACHE }}
           key: qt-${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-linux-gcc_64-aqt${{ env.AQTINSTALL_VERSION }}-sp-rv1
@@ -167,7 +167,7 @@ jobs:
             libfreetype-dev strace
 
       - name: Restore Qt
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ env.QT_CACHE }}
           key: qt-${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-linux-gcc_64-aqt${{ env.AQTINSTALL_VERSION }}-sp-rv1
@@ -243,7 +243,7 @@ jobs:
             libfreetype-dev strace
 
       - name: Restore Qt
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ env.QT_CACHE }}
           key: qt-${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-linux-gcc_64-aqt${{ env.AQTINSTALL_VERSION }}-sp-rv1
@@ -289,7 +289,7 @@ jobs:
         run: echo "QT_CACHE=$RUNNER_TEMP/qt-cache" >> "$GITHUB_ENV"
 
       - name: Restore Qt
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ env.QT_CACHE }}
           key: qt-${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-linux-gcc_64-aqt${{ env.AQTINSTALL_VERSION }}-sp-rv1
@@ -412,7 +412,7 @@ jobs:
           "QT_ROOT=$env:RUNNER_WORKSPACE\Qt" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Restore Qt
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         id: cache-qt
         with:
           path: ${{ env.QT_ROOT }}
