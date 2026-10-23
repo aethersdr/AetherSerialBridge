@@ -1,0 +1,16 @@
+# Static Qt, headless Linux profile (WS-13, master section 9). One or more configure arguments per line.
+# QtDBus is needed by the systemd adapter (WS-8): -dbus-runtime loads libdbus-1 with dlopen, not a spawn.
+# Built inside the ubuntu:22.04 build container, so the release binary's glibc floor is 2.35 (D36, INV-87).
+-static -release
+-no-gui -no-widgets -no-opengl
+-dbus-runtime
+-no-icu -no-openssl -no-glib
+-no-feature-sql
+-nomake tests -nomake examples
+# WS-13 additions (vetoable): Qt's bundled zlib and no brotli, so the binary needs no libz.so.1 or
+# libbrotlidec.so.1 on the target (a minimal Raspberry Pi OS need not have libbrotli).
+-qt-zlib -no-feature-brotli
+# Qt 6.12's configure drops -dbus-runtime (its CMake call carried no INPUT_dbus and the summary said "directly linked
+# to libdbus ... yes"; checked 2026-10-16): pass the CMake input itself. release.yml's gate fails the build if the
+# binary still lists libdbus-1 as NEEDED.
+-- -DINPUT_dbus=runtime

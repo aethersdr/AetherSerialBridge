@@ -1,0 +1,24 @@
+Help                                                                            
+What the bridge does                                                            
+Each port joins one serial device to one TCP port. AetherSDR connects to the TCP
+port and talks to the device as if it were plugged into its own machine. One    
+client at a time: a new connection replaces the current one. The device is      
+opened only while a client is connected.                                        
+                                                                                
+Read-only or administrator                                                      
+Anyone can look. To change anything, run sudo aether-serial-bridge --tui.       
+You can change ports now.                                                       
+                                                                                
+The ports screen                                                                
+Up/Down or j/k: select a port, or the auto-start row under the ports.           
+Enter: edit the selected port (on the auto-start row: turn it on or off).       
+a: add a port.                                                                  
+d: delete the selected port.                                                    
+Space: turn the selected port, or auto-start, on or off.                        
+s: Save & apply: see below.                                                     
+r: reload the settings from disk. Unsaved changes are dropped (it asks first).  
+t: start the bridge with the applied settings.                                  
+x: stop the bridge. It also turns auto-start off: t starts the bridge again with
+the applied settings; to use Save & apply (s) instead, turn auto-start back on  
+first.                                                                          
+↑↓ PgUp PgDn scroll  Esc back                                                   

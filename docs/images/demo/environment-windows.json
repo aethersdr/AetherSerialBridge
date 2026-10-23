@@ -1,0 +1,5 @@
+{
+  "serialDevices": ["COM5", "COM7"],
+  "localAddresses": ["192.0.2.20", "127.0.0.1", "0.0.0.0"],
+  "dataFolder": "C:/ProgramData/AetherSerialBridge"
+}

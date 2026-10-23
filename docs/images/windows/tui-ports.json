@@ -1,0 +1,29 @@
+{
+    "image": "tui-ports.png",
+    "os": "windows",
+    "scale": 1,
+    "size": [
+        100,
+        30
+    ],
+    "state": "running, one client connected",
+    "texts": [
+        "▄▄▄▀▀▀▀▀▀▀▀▄▄▄           Aether Serial Bridge",
+        "▄▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▄        Serial gear on the network for AetherSDR: one port, one client.",
+        "▄▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▄",
+        "▄▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▄    Service ● running (pid 4000)",
+        "▄▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▄",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+        "On  Name       Device         Listen                State",
+        "[x] Amp        COM5           192.0.2.20:4001       ● Connected · 192.0.2.10:50514",
+        "[x] Tuner      COM7           0.0.0.0:4002          ● Listening",
+        "[x] Start automatically with Windows",
+        "Enter edit  a add  d delete  Space on/off  s Save & apply  r reload  t start  x stop  p ports  l lo…"
+    ],
+    "theme": "aethersdr.com palette"
+}

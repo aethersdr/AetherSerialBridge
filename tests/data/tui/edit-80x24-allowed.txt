@@ -1,0 +1,24 @@
+Edit port Amp                                                                   
+────────────────────────────────────────────────────────────────────────────────
+Name         Amp                                                                
+Enabled      [x]                                                                
+Device       COM3                                                               
+Baud         38400                                                              
+Format       8N1                                                                
+Listen on    0.0.0.0                                                            
+TCP port     4001                                                               
+Allowed      10.0.0.5_                                                          
+Assert DTR   [ ]                                                                
+Assert RTS   [ ]                                                                
+                                                                                
+e.g. 192.0.2.10, 198.51.100.0/24. Blank: any address. Linux does not enforce it.
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+Tab next  Shift+Tab back  Space toggle  Enter accept  Esc cancel                

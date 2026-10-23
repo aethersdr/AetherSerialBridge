@@ -1,0 +1,16 @@
+# Build trees and tool caches
+/build/
+/build-*/
+/.cache/
+CMakeUserPresets.json
+compile_commands.json
+*.map
+
+# Editor and OS litter
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+aqtinstall.log
+__pycache__/

@@ -1,0 +1,905 @@
+name: CI
+
+# Triggers: a pull request builds its commits (pull_request, forks included); main builds on push; any branch builds
+# on demand (gh workflow run ci.yml --ref <branch>).
+#
+# Runners: GitHub-hosted only. A job starts on a fresh machine and leaves nothing behind, so no job cleans up after
+# an earlier one.
+#   linux, no-qtgui,   ubuntu-22.04: the oldest supported Ubuntu, so the linux leg's glibc audit proves the 2.35
+#   sanitizers,        floor directly (ASB_GLIBC_MAX=2.35).
+#   containers         ubuntu-22.04 with Docker: the ubuntu:22.04 build container, the glibc 2.35 audit, and systemd as
+#                      PID 1 (the systemd suite, tests/systemd).
+#   distro-arm         ubuntu-24.04-arm: the headless build against the distribution's Qt (floor 6.4) in an
+#                      ubuntu:24.04 container. Runs only while the repository variable ASB_ARM64_RUNNERS is not
+#                      'false' (hosted arm64 runners are free for public repositories; set the variable to 'false'
+#                      to turn every arm64 job in ci, qt-static, release and docs-shots off).
+#   windows            windows-latest: MSVC, the pinned Qt through aqt, the native rows (the real service, firewall
+#                      rules, the Apps & features key, a FAT32 volume). The runner is an administrator.
+#   vendor-integrity,  ubuntu-latest.
+#   static-checks
+#
+# tools/check_qt_pin.py (static-checks) enforces the rules that must not drift: hosted runner labels only (a public
+# repository's fork pull requests run their own copy of a workflow, so a self-hosted label would hand that machine to
+# them), read-only top-level permissions, actions pinned by commit SHA, the Qt pin.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same pull request cancels the older run; main runs are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.run_id) || '' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+# The Qt pin. cmake/qt-pin.env is the source of truth; a workflow cannot source a file before its
+# own env block is evaluated, so the values are spelled out here and tools/check_qt_pin.py (the
+# static-checks leg) fails if they ever disagree. aqt is pinned because it decides what Qt lands
+# here; Windows installs it from a pinned git revision (aqtinstall#1000, unreleased).
+#
+# Package revision: aqt takes a version, not a revision, and installs what the repository serves
+# now. ci/scripts/check_qt_revision.py reads aqt's log after every install and fails unless every
+# archive carries QT_PACKAGE_REVISION; a restored cache is trusted only if the evidence that check
+# wrote is in it. Cache keys end in -rv1: entries made before the check existed carry no evidence.
+env:
+  QT_VERSION: '6.12.0'
+  QT_PACKAGE_REVISION: '202609280346'
+  AQTINSTALL_VERSION: '3.3.0'
+  AQTINSTALL_GIT_REF: '076e1659807d0b362a3ed684d54c2e9c775eb9c7'
+  PY7ZR_VERSION: '1.1.3'
+
+jobs:
+  # ---------------------------------------------------------------------------------------------
+  # linux: GUI + headless against the pinned Qt, on the oldest supported Ubuntu (glibc 2.35).
+  # ---------------------------------------------------------------------------------------------
+  linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      # The build tree stays in the checkout: moc writes includes relative to it, so a symlinked build/
+      # breaks them. actions/cache refuses a path with '..' in it (it warned "Relative pathing '.' and
+      # '..' is not allowed" and silently saved nothing), so the Qt cache lives under the runner's temp directory.
+      - name: Qt cache location
+        run: echo "QT_CACHE=$RUNNER_TEMP/qt-cache" >> "$GITHUB_ENV"
+
+      - name: System libraries Qt links against
+        run: |
+          SUDO=; [ "$(id -u)" -eq 0 ] || SUDO=sudo
+          $SUDO apt-get update
+          # strace: tst_ThemePatches observes ThemeManager's file syscalls (INV-52) and tst_TuiProcess the TUI's port
+          # list (INV-32); both fail without it, so every leg that runs them installs it.
+          DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y --no-install-recommends ninja-build \
+            g++ cmake python3-venv libdbus-1-dev strace \
+            libgl1-mesa-dev libxkbcommon-dev libfontconfig1-dev libfreetype-dev libx11-xcb-dev \
+            libxcb1-dev libxcb-cursor0 libxcb-glx0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-sync1 libxcb-util1 \
+            libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
+
+      - name: Restore Qt
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ env.QT_CACHE }}
+          key: qt-${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-linux-gcc_64-aqt${{ env.AQTINSTALL_VERSION }}-sp-rv1
+
+      - name: Install Qt (no-op on a complete cache)
+        run: ci/scripts/install-qt.sh "$QT_CACHE" linux_gcc_64
+
+      - name: Configure
+        run: >-
+          cmake --preset linux-dev
+          -DCMAKE_PREFIX_PATH="$QT_CACHE/$QT_VERSION/gcc_64"
+          -DASB_GLIBC_MAX=2.35
+
+      - name: Build
+        id: build
+        run: cmake --build --preset linux-dev
+
+      # v1.1 fix (the window on stock Ubuntu): the window built against aqt's Qt needs Qt, the C++ runtime and glibc,
+      # and no GL library of its own (it NEEDed libOpenGL.so.0 and libGLX.so.0, which a stock Ubuntu desktop lacks, so
+      # the AppImage did not start; CMakeLists.txt sets OpenGL_GL_PREFERENCE). An early warning on every PR; the
+      # AppImage's host-libs walk, its control and the stock-desktop start are in release.yml.
+      - name: The window needs no GL library of its own
+        run: >-
+          python3 tools/release_audit.py needed build/linux-dev/bin/aether-serial-bridge-gui
+          "libQt6*.so.6" libstdc++.so.6 libm.so.6 libgcc_s.so.1 libc.so.6 "ld-linux-*"
+
+      # Root is not bound by file permissions: tst_ThemeFollower skips its permission rows for UID 0 (INV-31
+      # themeFileOpenedReadOnly, INV-85 unreadableDuplicateIsAmbiguous), and this leg is the only one that builds
+      # them. The hosted runner is not root; should the job ever run as root, the suite runs as an unprivileged user.
+      - name: Test
+        run: |
+          if [ "$(id -u)" -eq 0 ]; then
+            id asbtest >/dev/null 2>&1 || useradd --create-home --home-dir /var/tmp/asbtest --shell /bin/bash asbtest
+            chown -R asbtest: "$GITHUB_WORKSPACE"
+            runuser -u asbtest -- env HOME=/var/tmp/asbtest ctest --preset linux-dev
+          else
+            ctest --preset linux-dev
+          fi
+
+      # Prove the permission rows ran: each must report PASS, and no test may have skipped for root.
+      - name: The permission rows ran unprivileged
+        if: ${{ !cancelled() && steps.build.conclusion != 'failure' }}
+        run: |
+          r=build/linux-dev/tests/tst_ThemeFollower.ctest.txt
+          test -f "$r"
+          grep -E 'TstThemeFollower::(themeFileOpenedReadOnly|unreadableDuplicateIsAmbiguous)\(' "$r"
+          for f in themeFileOpenedReadOnly unreadableDuplicateIsAmbiguous; do
+            grep -q "^PASS   : TstThemeFollower::$f()" "$r" || { echo "$f did not PASS"; exit 1; }
+          done
+          if grep -nE '^SKIP .*(root is not bound|root reads)' build/linux-dev/tests/*.ctest.txt; then
+            echo "a test skipped because it ran as root"; exit 1
+          fi
+
+      # WS-12: src/tui/LogoArt.inc is exactly what tools/gen_logo_art.py makes from the vendored logo, with the
+      # Pillow the script pins (its LANCZOS output may differ between releases).
+      - name: Logo art is generated
+        run: |
+          python3 -m venv /tmp/asb-logo-venv
+          /tmp/asb-logo-venv/bin/pip install --quiet "Pillow==$(sed -n 's/^PILLOW_VERSION = "\(.*\)"$/\1/p' tools/gen_logo_art.py)"
+          /tmp/asb-logo-venv/bin/python tools/gen_logo_art.py --check
+
+  # ---------------------------------------------------------------------------------------------
+  # no-qtgui (INV-37): the headless executable alone, no QtWidgets, and the NoQtGuiCheck control.
+  # ---------------------------------------------------------------------------------------------
+  no-qtgui:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      # The build tree stays in the checkout: moc writes includes relative to it, so a symlinked build/
+      # breaks them. actions/cache refuses a path with '..' in it (it warned "Relative pathing '.' and
+      # '..' is not allowed" and silently saved nothing), so the Qt cache lives under the runner's temp directory.
+      - name: Qt cache location
+        run: echo "QT_CACHE=$RUNNER_TEMP/qt-cache" >> "$GITHUB_ENV"
+
+      - name: System libraries
+        run: |
+          SUDO=; [ "$(id -u)" -eq 0 ] || SUDO=sudo
+          $SUDO apt-get update
+          DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y --no-install-recommends ninja-build \
+            g++ cmake libdbus-1-dev libgl1-mesa-dev libxkbcommon-dev libfontconfig1-dev \
+            libfreetype-dev strace
+
+      - name: Restore Qt
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ env.QT_CACHE }}
+          key: qt-${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-linux-gcc_64-aqt${{ env.AQTINSTALL_VERSION }}-sp-rv1
+
+      - name: Install Qt (no-op on a complete cache)
+        run: ci/scripts/install-qt.sh "$QT_CACHE" linux_gcc_64
+
+      - name: Configure (headless only)
+        run: cmake --preset linux-headless -DCMAKE_PREFIX_PATH="$QT_CACHE/$QT_VERSION/gcc_64"
+
+      - name: Build
+        run: cmake --build --preset linux-headless
+
+      - name: NoQtGuiCheck passes on the headless executable and rejects the control
+        run: |
+          ctest --preset linux-headless -L nogui
+          # The control must really exist: a check that ran zero control tests proves nothing.
+          ctest --preset linux-headless -N -L nogui | tee nogui.list
+          grep -q 'NoQtGuiCheck.aether-serial-bridge$' nogui.list
+          grep -q 'NoQtGuiCheck.nogui_control_bad_rejected$' nogui.list
+          grep -q 'NoQtGuiCheck.nogui_control_bad_layer_graph$' nogui.list
+          grep -q 'NoQtGuiCheck.nogui_control_bad_layer_map$' nogui.list
+          grep -q 'NoQtGuiCheck.nogui_control_bad_layer_artifact$' nogui.list
+          # The graph layer against every dependency spelling (tests/graph_shapes.cmake): the fixtures
+          # must exist, or a walk that sees nothing would pass for clean.
+          test "$(grep -c 'NoQtGuiCheck.graph_shape_' nogui.list)" -ge 90
+          for s in target_direct link_only_via_lib config_conditional_direct target_name_direct \
+                   alias_direct imported_legacy_config_direct file_so_direct flag_l_direct \
+                   object_files unresolved_namespaced widgets_forwards_to_gui_direct \
+                   clean_file_in_target_dir_direct clean_file_in_target_dir_drive_via_lib; do
+            grep -q "NoQtGuiCheck.graph_shape_$s\$" nogui.list
+          done
+
+      - name: Direct run on the control exits non-zero
+        run: |
+          set +e
+          cmake -DEXE=build/linux-headless/bin/nogui_control_bad \
+                -DGRAPH=build/linux-headless/nogui/nogui_control_bad.graph \
+                -DMAP=build/linux-headless/bin/nogui_control_bad.map \
+                -DREADELF="$(command -v readelf)" -DNM="$(command -v nm)" -DMODE=check \
+                -P cmake/NoQtGuiCheck.cmake
+          rc=$?
+          echo "exit code on the control: $rc"
+          test "$rc" -ne 0
+
+      - name: Whole headless suite
+        run: ctest --preset linux-headless
+
+  # ---------------------------------------------------------------------------------------------
+  # sanitizers (WS-4 acceptance): the headless build and every unit test under ASan + UBSan (leak
+  # checking on), against the pinned Qt.
+  # ---------------------------------------------------------------------------------------------
+  sanitizers:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      ASAN_OPTIONS: detect_leaks=1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      # The build tree stays in the checkout: moc writes includes relative to it, so a symlinked build/
+      # breaks them. actions/cache refuses a path with '..' in it (it warned "Relative pathing '.' and
+      # '..' is not allowed" and silently saved nothing), so the Qt cache lives under the runner's temp directory.
+      - name: Qt cache location
+        run: echo "QT_CACHE=$RUNNER_TEMP/qt-cache" >> "$GITHUB_ENV"
+
+      - name: System libraries
+        run: |
+          SUDO=; [ "$(id -u)" -eq 0 ] || SUDO=sudo
+          $SUDO apt-get update
+          DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y --no-install-recommends ninja-build \
+            g++ cmake libdbus-1-dev libgl1-mesa-dev libxkbcommon-dev libfontconfig1-dev \
+            libfreetype-dev strace
+
+      - name: Restore Qt
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ env.QT_CACHE }}
+          key: qt-${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-linux-gcc_64-aqt${{ env.AQTINSTALL_VERSION }}-sp-rv1
+
+      - name: Install Qt (no-op on a complete cache)
+        run: ci/scripts/install-qt.sh "$QT_CACHE" linux_gcc_64
+
+      - name: Configure (headless, ASan + UBSan)
+        run: >-
+          cmake -S . -B build/sanitizers -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          -DASB_BUILD_GUI=OFF -DASB_BUILD_TESTS=ON -DASB_WERROR=ON
+          -DCMAKE_PREFIX_PATH="$QT_CACHE/$QT_VERSION/gcc_64"
+          "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined"
+          "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"
+
+      - name: Build
+        run: cmake --build build/sanitizers
+
+      - name: Unit tests under the sanitizers
+        run: ctest --test-dir build/sanitizers --output-on-failure -R '^tst_'
+
+  # ---------------------------------------------------------------------------------------------
+  # containers (D36): the headless binary built in the ubuntu:22.04 build container, then run
+  # (--help, --status) in the debian:bookworm systemd container with systemd as PID 1.
+  # ---------------------------------------------------------------------------------------------
+  containers:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      # As AetherSDR's CI: the hosted image's toolchains this job never uses are deleted for disk (the Docker images,
+      # Qt trees and build trees together outgrow the runner's free space).
+      - name: Free runner disk
+        run: |
+          df -h / "$GITHUB_WORKSPACE"
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / "$GITHUB_WORKSPACE"
+
+      # actions/cache refuses a path with '..' in it (it warned "Relative pathing '.' and '..' is not
+      # allowed" and silently saved nothing), so the Qt cache lives under the runner's temp directory.
+      - name: Qt cache location
+        run: echo "QT_CACHE=$RUNNER_TEMP/qt-cache" >> "$GITHUB_ENV"
+
+      - name: Restore Qt
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ env.QT_CACHE }}
+          key: qt-${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-linux-gcc_64-aqt${{ env.AQTINSTALL_VERSION }}-sp-rv1
+
+      - name: Build the build container
+        run: >-
+          docker build --pull --label org.aethersdr.asb-ci=containers -t asb-build-2204
+          -f ci/containers/build-ubuntu2204.Dockerfile ci/containers
+
+      - name: Build the headless executable in the container
+        run: |
+          mkdir -p "$QT_CACHE" build-container home
+          docker run --rm --label org.aethersdr.asb-ci=containers \
+            -u "$(id -u):$(id -g)" -e HOME=/work/home \
+            -v "$PWD:/src" -v "$PWD/build-container:/build" -v "$PWD/home:/work/home" \
+            -v "$QT_CACHE:/qt" -w /src asb-build-2204 bash -euxo pipefail -c '
+              ci/scripts/install-qt.sh /qt linux_gcc_64
+              cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DASB_BUILD_GUI=OFF -DASB_BUILD_TESTS=ON -DASB_WERROR=ON \
+                -DASB_REQUIRE_PINNED_QT=ON -DASB_GLIBC_MAX=2.35 \
+                -DCMAKE_PREFIX_PATH=/qt/'"$QT_VERSION"'/gcc_64
+              cmake --build /build
+              ctest --test-dir /build --output-on-failure -L "glibc-audit|nogui|import-audit"
+              ctest --test-dir /build --output-on-failure -R "^tst_"
+            '
+
+      # v1.1 WS-17: the seam window for sysd::window_lifecycle_native (dynamic Qt with the offscreen plugin), and the
+      # program beside it from the SAME build directory: the window's compiled-in program digest (WS-14) is that
+      # program's, so the window's staged install is "this build". Only those two targets are built.
+      - name: Build the seam window in the container
+        run: |
+          mkdir -p build-container-gui
+          docker run --rm --label org.aethersdr.asb-ci=containers \
+            -u "$(id -u):$(id -g)" -e HOME=/work/home \
+            -v "$PWD:/src" -v "$PWD/build-container-gui:/build" -v "$PWD/home:/work/home" \
+            -v "$QT_CACHE:/qt" -w /src asb-build-2204 bash -euxo pipefail -c '
+              cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DASB_BUILD_GUI=ON -DASB_BUILD_TESTS=ON -DASB_WERROR=ON \
+                -DASB_REQUIRE_PINNED_QT=ON -DCMAKE_PREFIX_PATH=/qt/'"$QT_VERSION"'/gcc_64
+              cmake --build /build --target aether-serial-bridge-gui aether-serial-bridge
+            '
+
+      - name: Build the systemd container
+        run: >-
+          docker build --pull --label org.aethersdr.asb-ci=containers -t asb-systemd-bookworm
+          -f ci/containers/systemd-bookworm.Dockerfile ci/containers
+
+      # v1.1 WS-15: another distribution's polkit (tests/polkit/fedora.Dockerfile, fedora:41 by digest): the Fedora cases.
+      - name: Build the Fedora polkit container
+        run: >-
+          docker build --pull --label org.aethersdr.asb-ci=containers -t asb-polkit-fedora
+          -f tests/polkit/fedora.Dockerfile tests/polkit
+
+      - name: Run the built binary in the systemd container
+        run: |
+          ASB_SYSTEMD_IMAGE=asb-systemd-bookworm ci/scripts/systemd-smoke.sh \
+            build-container/bin/aether-serial-bridge "$QT_CACHE/$QT_VERSION/gcc_64" --boot
+
+      # WS-8: the systemd suite: install, apply, start, stop, the persistent mask across a reboot (docker restart),
+      # the cgroup identity, the seccomp guard, the engine lock and the lock-pair recoveries, against systemd as PID 1.
+      # Each case boots its own privileged container. The cases run the dev build: its operations through the real CLI
+      # (WS-9; the test build prints each Result as JSON), the lock probes and given-config applies through the
+      # --test-op seam; release.yml reruns the suite on the release artifacts. Every case container is labelled
+      # org.aethersdr.asb-ci and capped at 2 GB / 2 CPUs; the driver removes each one (and the root-owned files of its
+      # lock-directory bind mount) when its case ends.
+      # The v1.0 program fixture (tests/systemd/fixtures.env) is not available to CI: --fixtures names a folder that
+      # does not exist, so the v1.0 cases SKIP and say why.
+      - name: systemd suite (WS-8)
+        run: |
+          python3 tests/systemd/driver.py --bin build-container/bin --qt "$QT_CACHE/$QT_VERSION/gcc_64" \
+            --gui-bin build-container-gui/bin \
+            --image asb-systemd-bookworm --fedora-image asb-polkit-fedora --fixtures "$PWD/no-v10-fixture" \
+            --work "$PWD/build-container/sysd-work" --jobs 2
+
+  # ---------------------------------------------------------------------------------------------
+  # distro-arm: headless against the distribution's Qt (floor 6.4) on a hosted arm64 runner.
+  # ---------------------------------------------------------------------------------------------
+  distro-arm:
+    runs-on: ubuntu-24.04-arm
+    # The arm64 switch (see the header): every arm64 job runs unless the repository variable says 'false'.
+    if: vars.ASB_ARM64_RUNNERS != 'false'
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      # Everything runs in an ubuntu:24.04 container (the distribution's Qt); the tests run as an unprivileged user,
+      # as on the other Linux legs.
+      - name: Configure, build and test against the distribution's Qt (headless, floor 6.4)
+        run: |
+          docker run --rm -v "$PWD:/src:ro" ubuntu:24.04 \
+            bash -euxo pipefail -c '
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update -q
+              apt-get install -y -q --no-install-recommends cmake ninja-build g++ git ca-certificates \
+                qt6-base-dev qt6-serialport-dev libdbus-1-dev libgl1-mesa-dev strace
+              useradd --create-home asbtest
+              cp -a /src /home/asbtest/src && chown -R asbtest: /home/asbtest/src
+              runuser -u asbtest -- bash -euxo pipefail -c "
+                cd /home/asbtest/src
+                cmake --preset linux-distro-headless
+                cmake --build --preset linux-distro-headless
+                ctest --preset linux-distro-headless"
+            '
+  # ---------------------------------------------------------------------------------------------
+  # windows: GUI + headless, MSVC, the pinned Qt through aqt, and the native rows.
+  # ---------------------------------------------------------------------------------------------
+  windows:
+    runs-on: windows-latest
+    # Measured: 12-14 min on windows-latest when the suite was much smaller (2026-10-14), 44 min on a 32-thread
+    # machine with today's suite. On 4 vCPU it is estimated at 60-100 min.
+    timeout-minutes: 180
+    env:
+      QT_ARCH: 'win64_msvc2022_64'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Qt location
+        shell: pwsh
+        run: |
+          "QT_ROOT=$env:RUNNER_WORKSPACE\Qt" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Restore Qt
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        id: cache-qt
+        with:
+          path: ${{ env.QT_ROOT }}
+          key: qt-${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-windows-${{ env.QT_ARCH }}-aqt${{ env.AQTINSTALL_GIT_REF }}-sp-rv1
+
+      - name: Install Qt via aqtinstall
+        if: steps.cache-qt.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          python -m venv "$env:RUNNER_TEMP\aqtvenv"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # PyPI aqtinstall 3.3.0 cannot read the Windows 6.11+ repository layout
+          # (aqtinstall#959); install the unreleased fix from a pinned revision.
+          & "$env:RUNNER_TEMP\aqtvenv\Scripts\pip.exe" install -q "git+https://github.com/miurahr/aqtinstall.git@$env:AQTINSTALL_GIT_REF" "py7zr==$env:PY7ZR_VERSION"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # aqt #995: py7zr's symlink sanitising fails at random, so extract with the runner's 7-Zip.
+          $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
+          # Parallel 7-Zip workers race while creating the output root on a fresh install.
+          $qtRoot = "$env:QT_ROOT\$env:QT_VERSION\" + ($env:QT_ARCH -replace '^win64_', '')
+          New-Item -ItemType Directory -Force -Path $qtRoot | Out-Null
+          # aqt appends to aqtinstall.log in the working directory: start it empty so the revision
+          # check below reads this install and nothing older.
+          Remove-Item -Force aqtinstall.log -ErrorAction SilentlyContinue
+          & "$env:RUNNER_TEMP\aqtvenv\Scripts\aqt.exe" install-qt windows desktop $env:QT_VERSION $env:QT_ARCH `
+            -m qtserialport `
+            --external $sevenZip `
+            --outputdir "$env:QT_ROOT"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # aqt installs the current revision of the version: prove it is the pinned one before this
+          # tree can be cached. The evidence file is what a later cache hit is trusted on.
+          python ci/scripts/check_qt_revision.py install --log aqtinstall.log `
+            --version $env:QT_VERSION --revision $env:QT_PACKAGE_REVISION `
+            --out "$env:QT_ROOT\.installed-$env:QT_VERSION-$env:QT_PACKAGE_REVISION-$env:QT_ARCH.txt"
+          if ($LASTEXITCODE -ne 0) {
+            Remove-Item -Recurse -Force "$env:QT_ROOT" -ErrorAction SilentlyContinue
+            exit 1
+          }
+
+      - name: Export Qt environment
+        shell: pwsh
+        run: |
+          # Cache hit or fresh install: either way the tree must carry proof of the pinned revision.
+          python ci/scripts/check_qt_revision.py evidence `
+            --file "$env:QT_ROOT\.installed-$env:QT_VERSION-$env:QT_PACKAGE_REVISION-$env:QT_ARCH.txt" `
+            --version $env:QT_VERSION --revision $env:QT_PACKAGE_REVISION
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $qtRoot = "$env:QT_ROOT\$env:QT_VERSION\" + ($env:QT_ARCH -replace '^win64_', '')
+          foreach ($f in 'bin\qmake.exe', 'lib\cmake\Qt6\Qt6Config.cmake', 'lib\cmake\Qt6SerialPort\Qt6SerialPortConfig.cmake') {
+            if (-not (Test-Path "$qtRoot\$f" -PathType Leaf)) {
+              Write-Host "ERROR: $f missing from $qtRoot (aqt layout changed, or a stale cache entry)"
+              Get-ChildItem "$env:QT_ROOT\$env:QT_VERSION" -ErrorAction SilentlyContinue
+              exit 1
+            }
+          }
+          "CMAKE_PREFIX_PATH=$qtRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$qtRoot\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          & "$qtRoot\bin\qmake.exe" -query QT_VERSION
+
+      - name: MSVC environment
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x64
+
+      - name: Configure
+        run: cmake --preset windows-dev
+
+      - name: Build
+        run: cmake --build --preset windows-dev
+
+      # INV-116 (WS-6): a FAT32 volume for the "NTFS or ReFS only" rows. tst_WinDataFolderNative and
+      # tst_WinLocksNative fail (never skip) on CI when ASB_FAT_VOLUME is missing.
+      - name: FAT32 test volume
+        shell: pwsh
+        run: |
+          # The image name and the label come from ci/win-test-names.psd1, the one source of the test-side names.
+          $names = Import-PowerShellDataFile ci/win-test-names.psd1
+          $vhd = "$env:RUNNER_TEMP\$($names.FatImagePrefix).vhdx"
+          $script = "create vdisk file=`"$vhd`" maximum=64 type=expandable`nselect vdisk file=`"$vhd`"`nattach vdisk`ncreate partition primary`nformat fs=fat32 quick label=$($names.FatLabel)`nassign letter=Q`n"
+          $script | Out-File -Encoding ascii "$env:RUNNER_TEMP\asb-diskpart.txt"
+          diskpart /s "$env:RUNNER_TEMP\asb-diskpart.txt"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $v = Get-Volume -DriveLetter Q
+          if ($v.FileSystem -ne 'FAT32') { Write-Host "Q: is $($v.FileSystem), not FAT32"; exit 1 }
+          "ASB_FAT_VOLUME=Q:\" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      # The Test step's split must fail closed: a test in neither run or in both, a short run, a failed run.
+      - name: The Test step's split fails closed
+        shell: pwsh
+        run: ci/scripts/win-ctest-split-selftest.ps1
+      # Every test that is not a native row runs in parallel; the native rows (win-integration: the real service,
+      # firewall groups, Apps & features key, COM ports, FAT32 volume) then run one at a time, apart from everything
+      # else. -j 4, the hosted runner's processor count: the parallel half is about 140 s of work and its longest test
+      # about 35 s, and the timing rows (tst_DeadlineWatchdog) need the processor time they ask for. The script fails
+      # the step when either run fails (both always run), when a run's count is not its listing's, or when the two
+      # listings are not exactly the full list.
+      - name: Test
+        id: ctest
+        shell: pwsh
+        run: ci/scripts/win-ctest-split.ps1 -Preset windows-dev -Jobs 4
+
+      - name: WS-6 native rows ran (win-integration)
+        shell: pwsh
+        run: |
+          # The native rows must exist and must have run: a configuration that dropped them would pass for clean.
+          $list = ctest --preset windows-dev -N -L win-integration
+          $list
+          foreach ($t in 'tst_WinDataFolderNative', 'tst_WinFileIoNative', 'tst_WinLocksNative', 'tst_WinApplierNative', 'tst_ProcessGuardNative',
+                         'tst_ServiceNative', 'tst_ServiceScheduleNative', 'tst_CimNative', 'tst_CliNative',
+                         'tst_GuiNative', 'dllprobe_unmitigated', 'dllprobe_mitigated') {
+            if (-not ($list -match "$t`$")) { Write-Host "missing native test $t"; exit 1 }
+          }
+
+      # ctest hides the output of passing tests, and QtTest's stdout does not reach ctest -V on this
+      # leg (a run printed nothing). The UNC tests (INV-53) are the one thing only this leg can prove,
+      # so run tst_ThemeFollower once more with the same environment ctest gives it, write its
+      # per-function PASS/FAIL/SKIP lines to a file and print them. The test fails, not skips, when
+      # the administrative share is unreachable and CI is set.
+      #
+      # It runs after the Test step whether that passed or failed (it is skipped only if the build
+      # never got as far as the Test step, or the run was cancelled), and it first prints the
+      # per-function results the Test step's own run wrote to a file (tests/CMakeLists.txt adds a
+      # second -o): a flaky tst_ThemeFollower fails the Test step, and the failing function is in that
+      # file (D-WS11-3). The re-run below it is a second sample, so a failure there is a failure too.
+      - name: tst_ThemeFollower per-function results (UNC admin-share opens)
+        if: ${{ !cancelled() && steps.ctest.conclusion != 'skipped' }}
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $env:ASB_PYTHON = (Get-Command python -ErrorAction Stop).Source
+          $env:ASB_SAVEAS_GEN = (Resolve-Path build\windows-dev\bin\asb_theme_saveas_gen.exe).Path
+          $exe = (Resolve-Path build\windows-dev\bin\tst_ThemeFollower.exe).Path
+          Set-Location build\windows-dev\tests
+          if (Test-Path tst_ThemeFollower.ctest.txt) {
+            Write-Host '=== tst_ThemeFollower as the Test step ran it ==='
+            Get-Content tst_ThemeFollower.ctest.txt
+            Write-Host '=== tst_ThemeFollower run again ==='
+          } else {
+            Write-Host 'the Test step left no tst_ThemeFollower.ctest.txt'
+          }
+          & $exe -o tst_ThemeFollower.results.txt,txt
+          $rc = $LASTEXITCODE
+          Get-Content tst_ThemeFollower.results.txt
+          Write-Host "tst_ThemeFollower exit code: $rc"
+          if ($rc -ne 0) { exit $rc }
+
+      - name: Test log (on failure)
+        if: failure()
+        shell: pwsh
+        run: |
+          # The parallel run's log is kept as LastTest-unit.log; the native rows' run writes LastTest.log.
+          foreach ($f in 'LastTest-unit.log', 'LastTest.log') {
+            Write-Host "=== $f ==="
+            Get-Content "build\windows-dev\Testing\Temporary\$f" -ErrorAction SilentlyContinue
+          }
+
+      # WS-7: what the station-PC qualification (qualification/ws7-station.ps1) runs on: the headless exe, the
+      # qualification harness and the dynamic-Qt runtime (the shipped exes are static, WS-13).
+      - name: WS-7 station artifacts
+        if: success() || failure()
+        shell: pwsh
+        run: |
+          $d = "$env:RUNNER_TEMP\ws7-station-artifacts"
+          New-Item -ItemType Directory -Force "$d\runtime" | Out-Null
+          Copy-Item build\windows-dev\bin\aether-serial-bridge.exe, build\windows-dev\bin\asb_win_qual.exe $d -ErrorAction SilentlyContinue
+          foreach ($n in 'Qt6Core.dll', 'Qt6Network.dll', 'Qt6SerialPort.dll') {
+            Copy-Item "$env:CMAKE_PREFIX_PATH\bin\$n" $d -ErrorAction SilentlyContinue
+            Copy-Item "$env:CMAKE_PREFIX_PATH\bin\$n" "$d\runtime" -ErrorAction SilentlyContinue
+          }
+          foreach ($n in 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'msvcp140_1.dll') {
+            Copy-Item "$env:SystemRoot\System32\$n" $d -ErrorAction SilentlyContinue
+            Copy-Item "$env:SystemRoot\System32\$n" "$d\runtime" -ErrorAction SilentlyContinue
+          }
+          Copy-Item qualification\ws7-station.ps1 $d
+          # The station script must parse in PowerShell 7 and in Windows PowerShell 5.1 (the station's default).
+          $errs = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path qualification\ws7-station.ps1), [ref]$null, [ref]$errs)
+          if ($errs) { $errs | Format-List; exit 1 }
+          powershell.exe -NoProfile -Command "`$e = `$null; [void][System.Management.Automation.Language.Parser]::ParseFile('$((Resolve-Path qualification\ws7-station.ps1).Path)', [ref]`$null, [ref]`$e); if (`$e) { `$e | Format-List; exit 1 }"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # Its refusal path runs here too (not elevated as a check would need: the runner is admin, so check the
+          # artifacts precondition instead): a missing artifacts folder is refused with exit 2.
+          pwsh -NoProfile -File qualification\ws7-station.ps1 -Artifacts "$env:RUNNER_TEMP\no-such-folder" -Evidence "$env:RUNNER_TEMP\ws7-evidence"
+          if ($LASTEXITCODE -ne 2) { Write-Host "expected the refusal exit 2, got $LASTEXITCODE"; exit 1 }
+          Get-ChildItem -Recurse $d | Format-Table -AutoSize Length, FullName
+          exit 0
+
+      # The station script's own SERIAL verdict (the parsed status line; review round 2, from the station run) in
+      # PowerShell 7 and Windows PowerShell 5.1: no CI run has a real COM port, so its parsing is checked here.
+      - name: WS-7 station script self-test (SERIAL status parsing)
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File qualification\ws7-station.ps1 -Artifacts "$env:RUNNER_TEMP\none" -Phase SelfTest
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File qualification\ws7-station.ps1 -Artifacts "$env:RUNNER_TEMP\none" -Phase SelfTest
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      # The station script, end to end on this admin runner, from the uploaded folder itself (a DLL missing from
+      # the bundle shows here), in Windows PowerShell 5.1 (the station's default shell).
+      - name: WS-7 station script end to end
+        shell: pwsh
+        run: |
+          $a = "$env:RUNNER_TEMP\ws7-station-artifacts"
+          $e = "$env:RUNNER_TEMP\ws7-e2e-plain"
+          $pf = "$env:ProgramFiles\AetherSerialBridge"; $pd = "$env:ProgramData\AetherSerialBridge"
+          $hadPf = Test-Path $pf; $hadPd = Test-Path $pd
+          & "$a\asb_win_qual.exe" detect
+          if ($LASTEXITCODE -ne 0) { "the harness does not run from the artifact folder"; exit 1 }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$a\ws7-station.ps1" -Artifacts $a -Evidence $e
+          $rc = $LASTEXITCODE
+          Get-Content "$e\results-Run.json" -ErrorAction SilentlyContinue
+          if ($rc -ne 0) { "Run phase exit $rc"; exit 1 }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$a\ws7-station.ps1" -Artifacts $a -Evidence $e -Phase Cleanup
+          $rc = $LASTEXITCODE
+          Get-Content "$e\results-Cleanup.json" -ErrorAction SilentlyContinue
+          if ($rc -ne 0) { "Cleanup phase exit $rc"; exit 1 }
+          if ((Test-Path $pf) -ne $hadPf -or (Test-Path $pd) -ne $hadPd) { "the folders were not restored"; exit 1 }
+          # A second Cleanup (the state file is gone) has nothing to do: exit 0, not a refusal.
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$a\ws7-station.ps1" -Artifacts $a -Evidence $e -Phase Cleanup
+          if ($LASTEXITCODE -ne 0) { "a repeated Cleanup exited $LASTEXITCODE"; exit 1 }
+          if (Get-Service AetherSerialBridge -ErrorAction SilentlyContinue) { "a service was left behind"; exit 1 }
+
+      # The station Cleanup on an installation that changed after the Run phase (review round 1): a stopped service
+      # this program did not install now holds the name and the install folder. Cleanup must touch nothing, end with a
+      # CLEANUP FAIL line and keep state.json; once that service is gone, the same Cleanup finishes and passes.
+      - name: WS-7 station script cleanup refuses a changed installation
+        shell: pwsh
+        run: |
+          $a = "$env:RUNNER_TEMP\ws7-station-artifacts"
+          $e = "$env:RUNNER_TEMP\ws7-e2e-changed"
+          $pf = "$env:ProgramFiles\AetherSerialBridge"
+          $station = "$a\ws7-station.ps1"
+          function Gone { $t = [Diagnostics.Stopwatch]::StartNew(); while ((Get-Service AetherSerialBridge -ErrorAction SilentlyContinue) -and $t.Elapsed.TotalSeconds -lt 60) { Start-Sleep -Milliseconds 250 }; -not (Get-Service AetherSerialBridge -ErrorAction SilentlyContinue) }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File $station -Artifacts $a -Evidence $e
+          if ($LASTEXITCODE -ne 0) { "Run phase exit $LASTEXITCODE"; exit 1 }
+          # Behind the script's back: the Qt service goes, a stopped foreign service takes its name and folder.
+          & "$a\asb_win_qual.exe" --exe "$a\aether-serial-bridge.exe" --runtime "$a\runtime" uninstall
+          if (-not (Gone)) { "the Qt service was not deleted"; exit 1 }
+          $other = "$pf\other-bridge.exe"
+          Copy-Item "$env:SystemRoot\System32\whoami.exe" $other
+          sc.exe create AetherSerialBridge binPath= "`"$other`" --service" start= demand
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $hash = (Get-FileHash $other).Hash
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File $station -Artifacts $a -Evidence $e -Phase Cleanup
+          $rc = $LASTEXITCODE
+          $first = Get-Content -Raw "$e\results-Cleanup.json" -ErrorAction SilentlyContinue
+          $kept = Test-Path "$e\state.json"
+          $after = ''
+          if (Test-Path $other) { $after = (Get-FileHash $other).Hash }
+          $svc = Get-Service AetherSerialBridge -ErrorAction SilentlyContinue
+          # The foreign fixture goes; then the same Cleanup finishes.
+          sc.exe delete AetherSerialBridge | Out-Null
+          if (-not (Gone)) { "the foreign fixture service was not deleted within 60 s"; exit 1 }
+          Remove-Item $other -Force -ErrorAction SilentlyContinue
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File $station -Artifacts $a -Evidence $e -Phase Cleanup
+          $rc2 = $LASTEXITCODE
+          $first
+          if ($rc -ne 1) { "the Cleanup over a foreign installation exited $rc, expected 1 (a CLEANUP FAIL line)"; exit 1 }
+          # (Windows PowerShell 5.1's ConvertTo-Json writes the quotes as \u0027: match the words.)
+          if ($first -notmatch 'installation is now' -or $first -notmatch 'Foreign') { "no CLEANUP FAIL naming the changed installation"; exit 1 }
+          if (-not $kept) { "state.json was not kept"; exit 1 }
+          if (-not $svc -or $after -ne $hash) { "the foreign installation was touched"; exit 1 }
+          if ($rc2 -ne 0 -or (Test-Path "$e\state.json")) { "the second Cleanup did not finish (exit $rc2)"; exit 1 }
+          if (Get-Service AetherSerialBridge -ErrorAction SilentlyContinue) { "a service was left behind"; exit 1 }
+
+      # The station Run moving the existing folders aside fails halfway (review round 2): Program Files moves, then
+      # ProgramData is held open without delete sharing. The state is already on disk, so -Phase Cleanup puts
+      # Program Files back and leaves ProgramData, which never moved, as it was.
+      - name: WS-7 station script recovers from a move aside that fails halfway
+        shell: pwsh
+        run: |
+          $a = "$env:RUNNER_TEMP\ws7-station-artifacts"
+          $e = "$env:RUNNER_TEMP\ws7-e2e-halfway"
+          $pf = "$env:ProgramFiles\AetherSerialBridge"
+          $pd = "$env:ProgramData\AetherSerialBridge"
+          $station = "$a\ws7-station.ps1"
+          if ((Test-Path $pf) -or (Test-Path $pd)) { "install folders left by an earlier step"; exit 1 }
+          New-Item -ItemType Directory $pf, $pd | Out-Null
+          Set-Content "$pf\marker.txt" 'program files'
+          Set-Content "$pd\marker.txt" 'program data'
+          Add-Type -Namespace AsbCi -Name Native -MemberDefinition @'
+          [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+          public static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string name, uint access, uint share,
+              System.IntPtr sa, uint disposition, uint flags, System.IntPtr template);
+          '@
+          # GENERIC_READ (0x80000000, written in decimal: the hex literal is a negative Int32 in PowerShell), share
+          # read|write (no delete), OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS (a directory)
+          $hold = [AsbCi.Native]::CreateFileW($pd, [uint32]2147483648, 3, [IntPtr]::Zero, 3, 0x02000000, [IntPtr]::Zero)
+          if ($hold.IsInvalid) { "could not hold $pd open"; exit 1 }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File $station -Artifacts $a -Evidence $e
+          $rc = $LASTEXITCODE
+          $stateKept = Test-Path "$e\state.json"
+          $pfMoved = -not (Test-Path $pf)
+          $hold.Dispose()
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File $station -Artifacts $a -Evidence $e -Phase Cleanup
+          $rc2 = $LASTEXITCODE
+          $pfBack = (Get-Content "$pf\marker.txt" -ErrorAction SilentlyContinue) -eq 'program files'
+          $pdKept = (Get-Content "$pd\marker.txt" -ErrorAction SilentlyContinue) -eq 'program data'
+          $asides = @(Get-ChildItem $env:ProgramFiles, $env:ProgramData -Directory -Filter 'AetherSerialBridge.ws7-aside-*' -ErrorAction SilentlyContinue)
+          Remove-Item $pf, $pd -Recurse -Force -ErrorAction SilentlyContinue
+          if ($rc -ne 1) { "the Run exited $rc, expected 1 (a FAIL line for the failed move)"; exit 1 }
+          if (-not $stateKept) { "no state.json after the failed move"; exit 1 }
+          if (-not $pfMoved) { "Program Files was not moved first (the test did not exercise the halfway state)"; exit 1 }
+          if ($rc2 -ne 0) { "the Cleanup exited $rc2"; exit 1 }
+          if (-not $pfBack) { "Program Files was not put back"; exit 1 }
+          if (-not $pdKept) { "ProgramData was changed"; exit 1 }
+          if ($asides.Count -ne 0) { "aside folders left: $($asides.FullName -join ', ')"; exit 1 }
+          if (Test-Path "$e\state.json") { "state.json left after a passing Cleanup"; exit 1 }
+
+      - name: Upload the WS-7 station artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ws7-station-artifacts
+          path: ${{ runner.temp }}\ws7-station-artifacts
+          retention-days: 3
+          if-no-files-found: warn
+
+      # WS-10: the GUI as a runnable folder (dynamic Qt, windeployqt; the shipped exes are static, WS-13), staged in
+      # the work tree, and launched once: --self-test-init builds
+      # the window with an empty view, waits for expose and paint, and prints its loaded modules. A hang is killed
+      # after 60 s. The service session may have no interactive desktop, so "exposed" is reported, not required.
+      - name: WS-10 GUI folder and its self-test
+        if: ${{ !cancelled() && steps.ctest.conclusion != 'skipped' }}
+        shell: pwsh
+        run: |
+          $d = (New-Item -ItemType Directory -Force build\ws10-gui).FullName
+          Copy-Item build\windows-dev\bin\AetherSerialBridge.exe, build\windows-dev\bin\aether-serial-bridge.exe $d
+          & "$env:CMAKE_PREFIX_PATH\bin\windeployqt.exe" --release --no-translations --no-system-d3d-compiler --no-opengl-sw `
+            --dir $d "$d\AetherSerialBridge.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:CMAKE_PREFIX_PATH\bin\windeployqt.exe" --release --no-translations --no-system-d3d-compiler --no-opengl-sw `
+            --dir $d "$d\aether-serial-bridge.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($n in 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'msvcp140_1.dll') {
+            Copy-Item "$env:SystemRoot\System32\$n" $d -ErrorAction SilentlyContinue
+          }
+          @(
+            'Aether Serial Bridge: Windows GUI preview (WS-10). Dynamic Qt, deployed with windeployqt.'
+            ''
+            'Start AetherSerialBridge.exe from this folder. Launched normally (not as administrator) it only reads:'
+            'the configuration, the service state and the status. aether-serial-bridge.exe is the console program'
+            'the window would install; nothing runs it from here.'
+          ) | Set-Content -Encoding utf8 "$d\README-preview.txt"
+          $out = "$env:RUNNER_TEMP\ws10-selftest.out"
+          $err = "$env:RUNNER_TEMP\ws10-selftest.err"
+          $p = Start-Process -FilePath "$d\AetherSerialBridge.exe" -ArgumentList '--self-test-init' -PassThru -NoNewWindow `
+            -RedirectStandardOutput $out -RedirectStandardError $err
+          if (-not $p.WaitForExit(60000)) {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            Write-Host 'the self-test did not finish in 60 s; killed'
+            Get-Content $err -ErrorAction SilentlyContinue
+            exit 1
+          }
+          $rc = $p.ExitCode
+          Get-Content $err -ErrorAction SilentlyContinue
+          $json = Get-Content $out -Raw -ErrorAction SilentlyContinue
+          if (-not $json) { Write-Host "no report (exit $rc)"; exit 1 }
+          $r = $json | ConvertFrom-Json
+          Write-Host "self-test exit $rc; exposed=$($r.exposed) painted=$($r.painted); modules:"
+          $r.modules | ForEach-Object { "  $_" }
+          if ($rc -ne 0 -and $r.exposed) { Write-Host 'exposed but not painted'; exit 1 }
+          Get-ChildItem $d | Format-Table -AutoSize Length, Name
+
+      # WS-13, INV-88 mutant "static qwindows replaced by dynamic plugin": the release self-test (the gate release.yml
+      # runs on the unzipped static GUI) must reject this dynamic folder, naming the qwindows plugin it loaded.
+      - name: INV-88 control - the release self-test rejects a GUI with a dynamic qwindows
+        if: ${{ !cancelled() && steps.ctest.conclusion != 'skipped' }}
+        shell: pwsh
+        run: |
+          $out = pwsh -NoProfile -File packaging/windows/release-gui-self-test.ps1 -Tree build\ws10-gui -PluginPlantsOnly `
+            -Plant build\windows-dev\tests\win\release\plant\asb_marker_plant.dll -Work "$env:RUNNER_TEMP\inv88-control" `
+            -Dumpbin (Get-Command dumpbin.exe).Source
+          $rc = $LASTEXITCODE
+          $out
+          if ($rc -ne 1) { Write-Host "expected the rejection (exit 1), got $rc"; exit 1 }
+          if (-not ($out -match '(NON-SYSTEM|LOADED-PLANT) .*qwindows\.dll')) { Write-Host 'the rejection does not name a qwindows plugin'; exit 1 }
+          Write-Host 'INV-88 control: rejected, naming the dynamic qwindows'
+          exit 0
+
+      - name: Upload the WS-10 GUI folder
+        if: ${{ !cancelled() && steps.ctest.conclusion != 'skipped' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ws10-gui-windows
+          path: build\ws10-gui
+          retention-days: 3
+          if-no-files-found: error
+
+      # WS-9: the console exe's own operations on this machine (tst_CliNative), printed whether or not they passed:
+      # the evidence that the CLI's Windows operation path ran before any station did.
+      - name: WS-9 native CLI row output
+        if: ${{ !cancelled() && steps.ctest.conclusion != 'skipped' }}
+        shell: pwsh
+        run: |
+          $log = 'build\windows-dev\tests\win\integration\tst_CliNative.log'
+          if (Test-Path $log) { Get-Content $log } else { Write-Host "no $log" }
+
+      # The real window's native row, printed whether or not it passed: its report-only bca3030 row records whether
+      # the station failure reproduces with the window as bca3030 built it.
+      - name: WS-10 native window row output
+        if: ${{ !cancelled() && steps.ctest.conclusion != 'skipped' }}
+        shell: pwsh
+        run: |
+          $log = 'build\windows-dev\tests\win\integration\tst_GuiNative.log'
+          if (Test-Path $log) { Get-Content $log } else { Write-Host "no $log" }
+
+      - name: WS-6/WS-7 native test output (on failure)
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem build\windows-dev\tests\win\integration\*.log -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "===== $($_.Name)"
+            Get-Content $_.FullName
+          }
+          # The unit tests' results (QtTest's stdout does not reach ctest on this leg): every file with a failure.
+          Get-ChildItem build\windows-dev\tests\*.ctest.txt -ErrorAction SilentlyContinue |
+            Where-Object { Select-String -Path $_.FullName -Pattern '^FAIL!' -Quiet } | ForEach-Object {
+              Write-Host "===== $($_.Name)"
+              Get-Content $_.FullName
+            }
+
+  # ---------------------------------------------------------------------------------------------
+  # vendor-integrity (WS-2): vendor/aethersdr is exactly AetherSDR at the pinned commit plus
+  # patches P1/P2, re-derived from a fresh fetch; the self-test proves a one-byte edit, an
+  # unlisted file or a broken patch fails it.
+  # ---------------------------------------------------------------------------------------------
+  vendor-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Vendored closure = upstream + patches (fresh fetch, re-applied patches, PROVENANCE.md)
+        run: ci/scripts/vendor-integrity.sh
+      - name: The check fails on a one-byte edit, an unlisted file and a broken patch
+        run: ci/scripts/vendor-integrity.sh --self-test
+
+  # ---------------------------------------------------------------------------------------------
+  # static-checks: the Qt pin, the workflow rules and the repository's own tools.
+  # ---------------------------------------------------------------------------------------------
+  static-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Qt pin and workflow rules agree
+        run: python3 tools/check_qt_pin.py
+      - name: Presets are valid JSON and cmake accepts them
+        run: |
+          python3 -c "import json; json.load(open('CMakePresets.json'))"
+          cmake --list-presets
+      - name: Shell scripts parse
+        run: |
+          for f in ci/scripts/*.sh packaging/*.sh packaging/*/*.sh packaging/*/*/*.sh packaging/linux/appimage/AppRun; do bash -n "$f"; done
+      # v1.1 WS-15: the staging script the Linux window runs as root through pkexec is POSIX sh, shellcheck-clean.
+      - name: The staging script is shellcheck-clean (POSIX sh)
+        run: |
+          if ! command -v shellcheck >/dev/null; then
+            sudo apt-get update -q
+            DEBIAN_FRONTEND=noninteractive sudo apt-get install -y -q --no-install-recommends shellcheck
+          fi
+          shellcheck --version | sed -n 2p
+          shellcheck -s sh packaging/linux/stage.sh
+      - name: The release audits have their tests
+        run: python3 -m unittest tools/test_release_audit.py tools/test_publish_release.py
+      - name: The Qt revision check has its tests
+        run: python3 -m unittest ci/scripts/test_check_qt_revision.py
+      - name: The workflow-rules check has its tests
+        run: python3 -m unittest tools/test_check_qt_pin.py
+      # The names the Windows native tests give what they create: one source (ci/win-test-names.psd1) for the
+      # tests, ci.yml and the station script.
+      - name: Windows test names have one source
+        run: python3 tools/check_win_test_names.py
+      - name: The test-names check has its tests
+        run: python3 -m unittest tools/test_check_win_test_names.py
+      # v1.1 WS-19 (INV-135): the docs images carry nothing real (with its controls: a planted private address and a
+      # planted callsign must fail it), the generator refuses any fixture but the demo one, and the operator docs'
+      # relative links and images resolve (so every page renders on GitHub).
+      - name: The docs images are the demo fixture's only
+        run: python3 tools/check_docs_images.py
+      - name: The docs images gate, the generator and the link check have their tests
+        run: python3 -m unittest tools/test_check_docs_images.py tools/test_docs_shots.py tools/test_check_doc_links.py
+      - name: The operator docs' links and images resolve
+        run: python3 tools/check_doc_links.py
+      # The repository location is one value, ASB_REPO in CMakeLists.txt: no user-facing doc or packaging text names
+      # this project at another repository, and no code writes its link out (tools/set_repo.py moves them together).
+      - name: The docs and the code name one repository (ASB_REPO)
+        run: |
+          python3 tools/set_repo.py --check
+          python3 -m unittest tools/test_set_repo.py

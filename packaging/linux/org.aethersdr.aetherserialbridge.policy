@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!--
+  Aether Serial Bridge: the one privileged action of the Linux settings window.
+
+  The window runs unprivileged and asks for every change (Save and apply, untick, Start, Stop, Repair, Discard
+  pending) by running the installed program /usr/local/bin/aether-serial-bridge through pkexec, with the helper
+  argument (argv1 below); the helper reads one bounded request on its standard input. An administrator's password
+  is asked every time (auth_admin, no retained authorization).
+
+  The install command writes this file to /usr/share/polkit-1/actions; only the uninstall command removes it (an
+  unticked Save and apply keeps it). XML comments cannot hold two hyphens in a row, so no option is spelled here.
+-->
+<policyconfig>
+  <vendor>Aether Serial Bridge</vendor>
+  <action id="org.aethersdr.aetherserialbridge.helper">
+    <description>Change the Aether Serial Bridge service and its settings</description>
+    <message>Authentication is required to change the Aether Serial Bridge service and its settings.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/aether-serial-bridge</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">--helper</annotate>
+  </action>
+</policyconfig>

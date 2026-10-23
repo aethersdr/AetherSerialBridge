@@ -1,0 +1,11 @@
+#pragma once
+
+// Generated at configure time from packaging/linux/stage.sh (edit that file, not this one): the staging script the Linux
+// window runs as root through `pkexec /bin/sh -c <script> asb-stage <sha256> <program length> <request length>`
+// (v1.1 D60, INV-122). Embedded byte for byte; tst_StageScript compares it with the file.
+
+namespace asb::cli::staged {
+
+inline constexpr char kStageScript[] = {@ASB_STAGE_SCRIPT@ '\0'};
+
+}  // namespace asb::cli::staged

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 2,
+  "name": "ASB Fixture",
+  "scopes": {
+    "root": {
+      "tokens": {
+        "color": {
+          "accent": "DSEG7 Modern"
+        }
+      }
+    }
+  }
+}

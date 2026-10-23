@@ -1,0 +1,88 @@
+name: CodeQL
+
+# As AetherSDR's codeql.yml: NO pull_request trigger. Analyzing C++ means a full build of the scanned targets with no
+# compiler cache, and CodeQL is not a required check, so it scans once per merge to main and weekly. Re-adding
+# `pull_request:` is a one-line change if that posture changes.
+#
+# Linux only: the window, the console program and everything they share (src/core, src/engine, src/cli, src/gui,
+# src/tui, src/platform/posix). src/platform/win is not built here, so it is not analyzed.
+on:
+  push:
+    branches: [main]
+    # Positive `paths:` (a run fires when ANY changed file matches): what the Build step compiles.
+    paths:
+      - 'src/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - '.github/codeql/**'
+      - '.github/workflows/codeql.yml'
+  schedule:
+    - cron: '0 6 * * 1'  # weekly Monday 06:00 UTC
+  # Run on a branch by hand, so a change to this file can be checked before it merges.
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.run_id) || '' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# CodeQL's documented scopes: actions: read (workflow metadata), contents: read (checkout), security-events: write
+# (the SARIF upload).
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+# The Qt pin, as ci.yml spells it (cmake/qt-pin.env is the source; tools/check_qt_pin.py checks ci.yml's copy).
+env:
+  QT_VERSION: '6.12.0'
+  QT_PACKAGE_REVISION: '202609280346'
+  AQTINSTALL_VERSION: '3.3.0'
+
+jobs:
+  analyze:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: System libraries Qt links against
+        run: |
+          sudo apt-get update
+          DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends ninja-build \
+            libdbus-1-dev libgl1-mesa-dev libxkbcommon-dev libfontconfig1-dev libfreetype-dev libx11-xcb-dev \
+            libxcb1-dev libxcb-cursor0 libxcb-glx0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-sync1 libxcb-util1 \
+            libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
+
+      # ci.yml's Linux legs keep this entry (same path, same key); a miss installs it.
+      - name: Qt cache location
+        run: echo "QT_CACHE=$RUNNER_TEMP/qt-cache" >> "$GITHUB_ENV"
+
+      - name: Restore Qt
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ env.QT_CACHE }}
+          key: qt-${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-linux-gcc_64-aqt${{ env.AQTINSTALL_VERSION }}-sp-rv1
+
+      - name: Install Qt (no-op on a complete cache)
+        run: ci/scripts/install-qt.sh "$QT_CACHE" linux_gcc_64
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@7c1e4cf0b20d7c1872b26569c00ba908797a59bf
+        with:
+          languages: cpp
+          config-file: ./.github/codeql/codeql-config.yml
+          # As AetherSDR: TRAP caching only speeds up pull-request analyses, which this workflow does not run.
+          trap-caching: false
+
+      # Release, no tests: CodeQL extracts compiler invocations, not debug info.
+      - name: Configure
+        run: >-
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DASB_BUILD_TESTS=OFF
+          -DCMAKE_PREFIX_PATH="$QT_CACHE/$QT_VERSION/gcc_64"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@7c1e4cf0b20d7c1872b26569c00ba908797a59bf

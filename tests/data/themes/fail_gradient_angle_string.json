@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 2,
+  "name": "ASB Fixture",
+  "scopes": {
+    "root": {
+      "tokens": {
+        "gradient": {
+          "panel": {
+            "type": "linear-gradient",
+            "angle": "90deg",
+            "stops": [
+              {
+                "at": 0,
+                "color": "#112233"
+              },
+              {
+                "at": 1,
+                "color": "{color.blue.500}"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+# SHARED (not static) Qt for the arm64 window's AppImage (aether-serial-bridge-gui-aarch64.AppImage). The window runs
+# unprivileged, so it keeps Qt's libraries and plugins inside the image, as the x86_64 AppImage does with aqt's Qt
+# (master D3). aqt's linux_arm64 Qt 6.12 is built on Ubuntu 24.04 and its QtGui needs GLIBC_2.38, above the 2.35 floor
+# (and Raspberry Pi OS Bookworm's 2.36), so the arm64 window gets this Qt, built in the ubuntu:22.04 container.
+# X11 through xcb (Wayland desktops run it through XWayland); raster painting, no OpenGL; the offscreen platform too
+# (the release self-test runs --self-test-init on it).
+-shared -release
+-xcb -no-opengl
+-no-icu -no-openssl -no-glib
+-no-feature-sql
+-qt-zlib -no-feature-brotli -qt-libpng -no-libjpeg
+-nomake tests -nomake examples

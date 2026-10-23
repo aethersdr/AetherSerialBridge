@@ -1,0 +1,12 @@
+Name         Amp                        
+Enabled      [x]                        
+Device       COM3                       
+Baud         fast_                      
+Format       8N1                        
+Listen on    0.0.0.0                    
+TCP port     4001                       
+Allowed      10.0.0.5                   
+Assert DTR   [ ]                        
+Assert RTS   [ ]                        
+Baud must be a whole number.            
+Tab next  Enter accept  Esc cancel      

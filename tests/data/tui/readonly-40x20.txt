@@ -1,0 +1,20 @@
+Aether Serial Bridge · *                
+running (pid 4000)                      
+Read-only: run as administrator / with  
+sudo to change ports                    
+On  Name    Device    Port State        
+[x] Amp     COM3      4001 * Connected …
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+[x] Start automatically at boot         
+                                        
+? keys  s save&apply  q quit            

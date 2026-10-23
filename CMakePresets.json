@@ -1,0 +1,78 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "ASB_BUILD_TESTS": "ON",
+        "ASB_WERROR": "ON"
+      }
+    },
+    {
+      "name": "linux-dev",
+      "displayName": "Linux: GUI + headless, tests, pinned Qt",
+      "inherits": "base",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "ASB_BUILD_GUI": "ON",
+        "ASB_REQUIRE_PINNED_QT": "ON"
+      }
+    },
+    {
+      "name": "linux-headless",
+      "displayName": "Linux: headless only (no QtWidgets), tests, pinned Qt",
+      "inherits": "base",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "ASB_BUILD_GUI": "OFF",
+        "ASB_REQUIRE_PINNED_QT": "ON"
+      }
+    },
+    {
+      "name": "linux-distro-headless",
+      "displayName": "Linux: headless only against the distribution's Qt (floor 6.4)",
+      "inherits": "base",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "ASB_BUILD_GUI": "OFF",
+        "ASB_REQUIRE_PINNED_QT": "OFF"
+      }
+    },
+    {
+      "name": "windows-dev",
+      "displayName": "Windows (MSVC, from a developer prompt): GUI + headless, tests, pinned Qt",
+      "inherits": "base",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "ASB_BUILD_GUI": "ON",
+        "ASB_REQUIRE_PINNED_QT": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "linux-dev", "configurePreset": "linux-dev" },
+    { "name": "linux-headless", "configurePreset": "linux-headless" },
+    { "name": "linux-distro-headless", "configurePreset": "linux-distro-headless" },
+    { "name": "windows-dev", "configurePreset": "windows-dev" }
+  ],
+  "testPresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "timeout": 300 }
+    },
+    { "name": "linux-dev", "inherits": "base", "configurePreset": "linux-dev" },
+    { "name": "linux-headless", "inherits": "base", "configurePreset": "linux-headless" },
+    { "name": "linux-distro-headless", "inherits": "base", "configurePreset": "linux-distro-headless" },
+    { "name": "windows-dev", "inherits": "base", "configurePreset": "windows-dev" }
+  ]
+}

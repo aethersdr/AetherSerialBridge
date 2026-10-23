@@ -1,0 +1,53 @@
+# AetherSerialBridge CODEOWNERS
+#
+# The AetherSDR project's three tiers (aethersdr/AetherSDR .github/CODEOWNERS), applied to this repository.
+# Last matching pattern wins, so the file runs broad -> specific:
+#
+#   Tier 3 (source code, broad default)   — the `*` line
+#   Tier 2 (project infrastructure)       — specific paths
+#   Tier 3 (docs/, resources/, tests/)    — below Tier 2's `*.md` glob, which would otherwise claim their markdown
+#   Tier 1 (governance, security, release) — bottom (most specific paths)
+#
+# A pattern with no slash (`*.md`, `CMakeLists.txt`) or only a TRAILING slash (`docs/`) matches at any depth; only a
+# LEADING slash anchors to the repository root.
+#
+# Tier 1 — @aethersdr/maintainers: the rules of the project and the paths that hold release write access or feed bytes
+#          into a release artifact.
+# Tier 2 — @aethersdr/infrastructure: build, CI, top-level markdown and the AI-instruction files (via `*.md`).
+# Tier 3 — @aethersdr/reviewers: source, tests and documentation.
+# See GOVERNANCE.md §CODEOWNERS and CONTRIBUTING.md §Reviews and merging.
+
+# ---- Tier 3: the broad default -------------------------------------------------------------------------------------
+*                                   @aethersdr/reviewers
+
+# ---- Tier 2: infrastructure ----------------------------------------------------------------------------------------
+*.md                                @aethersdr/infrastructure
+CMakeLists.txt                      @aethersdr/infrastructure
+CMakePresets.json                   @aethersdr/infrastructure
+/ci/                                @aethersdr/infrastructure
+/packaging/THIRD-PARTY-NOTICES.txt  @aethersdr/infrastructure
+.github/workflows/                  @aethersdr/infrastructure
+.github/dependabot.yml              @aethersdr/infrastructure
+.github/ISSUE_TEMPLATE/             @aethersdr/infrastructure
+
+# ---- Tier 3 again: these directories' markdown stays with their code (must sit below `*.md`) -----------------------
+docs/                               @aethersdr/reviewers
+resources/                          @aethersdr/reviewers
+tests/                              @aethersdr/reviewers
+
+# ---- Tier 1: governance, security, release -------------------------------------------------------------------------
+CODE_OF_CONDUCT.md                  @aethersdr/maintainers
+CONSTITUTION.md                     @aethersdr/maintainers
+CONTRIBUTING.md                     @aethersdr/maintainers
+GOVERNANCE.md                       @aethersdr/maintainers
+LICENSE                             @aethersdr/maintainers
+.specify/memory/constitution.md     @aethersdr/maintainers
+SECURITY*                           @aethersdr/maintainers
+.github/CODEOWNERS                  @aethersdr/maintainers
+.github/codeql/                     @aethersdr/maintainers
+.github/workflows/codeql.yml        @aethersdr/maintainers
+.github/workflows/release.yml       @aethersdr/maintainers
+.github/workflows/qt-static.yml     @aethersdr/maintainers
+/packaging/qt-static/               @aethersdr/maintainers
+/packaging/publish-release.py       @aethersdr/maintainers
+/packaging/sign-release.sh          @aethersdr/maintainers

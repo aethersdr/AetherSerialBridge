@@ -1,0 +1,10 @@
+# Tell GitHub linguist which trees are not this project's own code.
+vendor/** linguist-vendored
+docs/** linguist-documentation
+
+# The test fixtures are compared byte for byte: never convert their line endings.
+tests/data/** -text
+
+# Vendored AetherSDR files and their patches are byte-exact: no end-of-line conversion on any
+# platform, or the SHA-256s in vendor/aethersdr/PROVENANCE.md stop matching a Windows checkout.
+vendor/aethersdr/** -text

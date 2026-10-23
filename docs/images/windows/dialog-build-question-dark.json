@@ -1,0 +1,20 @@
+{
+    "image": "dialog-build-question-dark.png",
+    "os": "windows",
+    "scale": 1,
+    "size": [
+        760,
+        211
+    ],
+    "state": "Save & apply with another build installed",
+    "texts": [
+        "Aether Serial Bridge",
+        "The installed bridge is a different build. Installed: an earlier build, before 1.1 (program sha256 0123456789ab). This window: this build. Update it to this build? The ports restart.",
+        "No, keep it applies the settings to the installed program and keeps it. Cancel changes nothing.",
+        "Cancel",
+        "No, keep it",
+        "Update",
+        "✕"
+    ],
+    "theme": "Default Dark"
+}

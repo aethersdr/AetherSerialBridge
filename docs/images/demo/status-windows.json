@@ -1,0 +1,35 @@
+{
+  "updated": "2026-01-01T12:00:00.000Z",
+  "startedAt": "2026-01-01T09:00:00.000Z",
+  "pid": 4242,
+  "instanceId": "00000000000000000000000000000000",
+  "startToken": "",
+  "configSha256": "",
+  "configError": null,
+  "ports": [
+    {
+      "name": "Amp",
+      "comPort": "COM5",
+      "tcpPort": 4001,
+      "bindAddress": "192.0.2.20",
+      "state": "Connected",
+      "client": "192.0.2.10:50514",
+      "bytesToSerial": 18432,
+      "bytesToClient": 96256,
+      "lastError": null,
+      "since": "2026-01-01T09:00:05.000Z"
+    },
+    {
+      "name": "Tuner",
+      "comPort": "COM7",
+      "tcpPort": 4002,
+      "bindAddress": "0.0.0.0",
+      "state": "Listening",
+      "client": null,
+      "bytesToSerial": 0,
+      "bytesToClient": 0,
+      "lastError": null,
+      "since": "2026-01-01T09:00:05.000Z"
+    }
+  ]
+}

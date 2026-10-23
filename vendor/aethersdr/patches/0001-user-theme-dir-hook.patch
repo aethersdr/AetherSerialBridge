@@ -1,0 +1,86 @@
+P1 user-theme-dir-hook (Aether Serial Bridge, master §3.4 / WS-2; INV-52)
+
+ThemeManager::scanAvailableThemes() asks the host for the user theme directory
+(aetherUserThemeDir(), declared in ThemeManagerHost.h) and wraps the whole
+user-dir block in `if (!userDir.isEmpty())`. AetherSDR's own host returns the
+previous expression, GenericConfigLocation + "/AetherSDR/themes", so its
+behaviour is unchanged. Aether Serial Bridge returns "": no user directory is
+checked, listed or opened (an empty QDir would mean the working directory).
+
+Carries a GPL-3.0 section 5(a) modification notice. Offered upstream (R1).
+Test: tests/tst_ThemePatches.cpp (noUserDirScan, emptyHookScansNothingInCwd).
+
+diff --git a/src/core/ThemeManager.cpp b/src/core/ThemeManager.cpp
+index 36215ca..f6366d1 100644
+--- a/src/core/ThemeManager.cpp
++++ b/src/core/ThemeManager.cpp
+@@ -1,6 +1,9 @@
++// GPL-3.0 section 5(a) notice: this file was modified for Aether Serial Bridge on 2026-10-14 by
++// patch 0001-user-theme-dir-hook (scanAvailableThemes asks the host for the user theme directory).
+ #include "ThemeManager.h"
+ #include "AppSettings.h"
+ #include "LogManager.h"
++#include "ThemeManagerHost.h"
+ 
+ #include <QEvent>
+ #include <QStandardPaths>
+@@ -413,30 +416,36 @@ void ThemeManager::scanAvailableThemes()
+     // editor creates it on first save). Built-in names are reserved: a colliding
+     // user file is skipped with a warning so a stale copy can't shadow the bundled
+     // theme; users Save As under a new name.
+-    const QString userDir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+-                                + QStringLiteral("/AetherSDR/themes");
+-    QDir d(userDir);
+-    if (d.exists()) {
+-        const auto entries = d.entryList({"*.json"}, QDir::Files);
+-        for (const QString& file : entries) {
+-            const QString full = d.absoluteFilePath(file);
+-            QFile f(full);
+-            if (!f.open(QIODevice::ReadOnly)) continue;
+-            QJsonParseError err{};
+-            const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+-            f.close();
+-            if (err.error != QJsonParseError::NoError || !doc.isObject()) continue;
+-            const QString name = doc.object().value("name").toString();
+-            if (name.isEmpty()) continue;
+-            const auto existing = m_themePaths.constFind(name);
+-            if (existing != m_themePaths.constEnd()
+-                && existing.value().startsWith(QStringLiteral(":/themes/"))) {
+-                qCWarning(lcGui) << "ThemeManager: ignoring user-dir theme"
+-                                 << full << "— name collides with built-in"
+-                                 << name << "(use Save As under a new name)";
+-                continue;
++    //
++    // The directory comes from the host (ThemeManagerHost.h): AetherSDR's host
++    // returns GenericConfigLocation + "/AetherSDR/themes". A host that returns ""
++    // gets no user-dir scan at all: no directory is checked, listed or opened
++    // (an empty QDir would otherwise mean the current working directory).
++    const QString userDir = aetherUserThemeDir();
++    if (!userDir.isEmpty()) {
++        QDir d(userDir);
++        if (d.exists()) {
++            const auto entries = d.entryList({"*.json"}, QDir::Files);
++            for (const QString& file : entries) {
++                const QString full = d.absoluteFilePath(file);
++                QFile f(full);
++                if (!f.open(QIODevice::ReadOnly)) continue;
++                QJsonParseError err{};
++                const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
++                f.close();
++                if (err.error != QJsonParseError::NoError || !doc.isObject()) continue;
++                const QString name = doc.object().value("name").toString();
++                if (name.isEmpty()) continue;
++                const auto existing = m_themePaths.constFind(name);
++                if (existing != m_themePaths.constEnd()
++                    && existing.value().startsWith(QStringLiteral(":/themes/"))) {
++                    qCWarning(lcGui) << "ThemeManager: ignoring user-dir theme"
++                                     << full << "— name collides with built-in"
++                                     << name << "(use Save As under a new name)";
++                    continue;
++                }
++                m_themePaths.insert(name, full);
+             }
+-            m_themePaths.insert(name, full);
+         }
+     }
+ }

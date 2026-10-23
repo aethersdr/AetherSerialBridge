@@ -1,0 +1,22 @@
+{
+    "image": "dialog-uninstall-dark.png",
+    "os": "linux",
+    "scale": 1,
+    "size": [
+        760,
+        314
+    ],
+    "state": "Uninstall... while one client is connected",
+    "texts": [
+        "Aether Serial Bridge",
+        "Uninstall the bridge service? port 4001 (Amp) and port 4002 (Tuner) stop being bridged.",
+        "Stopping port 4001 (Amp): the client at 192.0.2.10:50514 is connected and will be disconnected.",
+        "Stopping port 4002 (Tuner): no client is connected.",
+        "It removes the service, the program in /usr/local/bin, the polkit policy and /var/lib/aether-serial-bridge. polkit will ask for an administrator's password.",
+        "Also remove my settings (the port list in /etc/aether-serial-bridge)",
+        "Cancel",
+        "Uninstall",
+        "✕"
+    ],
+    "theme": "Default Dark"
+}

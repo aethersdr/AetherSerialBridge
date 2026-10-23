@@ -1,0 +1,31 @@
+{
+    "image": "tui-read-only.png",
+    "os": "pi",
+    "scale": 1,
+    "size": [
+        80,
+        24
+    ],
+    "state": "read-only (not root)",
+    "texts": [
+        "▄▄▄▀▀▀▀▀▀▀▀▄▄▄           Aether Serial Bridge",
+        "▄▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▄        Serial gear on the network for AetherSDR: one",
+        "▄▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▄      port, one client.",
+        "▄▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▄",
+        "▄▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▄   Service ● running (pid 4000)",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   Read-only: run as administrator / with sudo to",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  change ports",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+        "On  Name       Device         Listen                State",
+        "[x] Amp        /dev/serial/b… 192.0.2.20:4001       ● Connected · 192.0.2.10:50…",
+        "[x] Tuner      /dev/serial/b… 0.0.0.0:4002          ● Listening",
+        "[x] Start automatically at boot",
+        "Enter edit  a add  d del  Space on/off  s save&apply  ? help  q quit"
+    ],
+    "theme": "aethersdr.com palette"
+}

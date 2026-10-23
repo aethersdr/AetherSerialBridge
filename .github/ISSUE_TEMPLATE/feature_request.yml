@@ -1,0 +1,35 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Thank you for your feature idea! 🙏
+
+        **We strongly encourage using an AI assistant to help structure your request:** describe your idea in plain
+        English and ask it for a structured GitHub issue (What / Why / How / the device and its serial settings), as our
+        [Contributing Guide](https://github.com/AetherSDR/AetherSerialBridge/blob/main/CONTRIBUTING.md#ai-assisted-feature-requests)
+        describes. Structured requests let us go straight to implementation.
+
+        Unstructured requests will still be reviewed, but will be prioritized behind well-structured ones as we work
+        through the backlog.
+
+  - type: checkboxes
+    id: ai_assisted
+    attributes:
+      label: Request preparation
+      options:
+        - label: "I used an AI assistant to help structure this request"
+          required: false
+        - label: "I checked for existing issues covering the same feature"
+          required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What would you like?
+      description: |
+        Describe the feature. If it is for a device, name it and attach its manual's serial section if you can.
+    validations:
+      required: true

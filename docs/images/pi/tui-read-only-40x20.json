@@ -1,0 +1,22 @@
+{
+    "image": "tui-read-only-40x20.png",
+    "os": "pi",
+    "scale": 1,
+    "size": [
+        40,
+        20
+    ],
+    "state": "read-only (not root), 40 x 20",
+    "texts": [
+        "Aether Serial Bridge · ●",
+        "running (pid 4000)",
+        "Read-only: run as administrator / with",
+        "sudo to change ports",
+        "On  Name    Device    Port State",
+        "[x] Amp     /dev/ser… 4001 ● Connected …",
+        "[x] Tuner   /dev/ser… 4002 ● Listening",
+        "[x] Start automatically at boot",
+        "? keys  s save&apply  q quit"
+    ],
+    "theme": "aethersdr.com palette"
+}

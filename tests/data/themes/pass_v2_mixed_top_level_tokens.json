@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 2,
+  "name": "ASB Mixed",
+  "primitives": {
+    "color.blue.500": "#00b4d8"
+  },
+  "tokens": {
+    "color": {
+      "accent": "{color.blue.500}"
+    }
+  }
+}

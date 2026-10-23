@@ -1,0 +1,8 @@
+Amp will listen on every network        
+interface, and Linux does not enforce   
+allowed clients. Anyone who can reach   
+this machine could operate that device. 
+Save anyway?                            
+                                        
+                                        
+y Yes    n No (Esc)                     

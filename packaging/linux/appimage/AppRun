@@ -1,0 +1,36 @@
+#!/bin/sh
+# AppRun of aether-serial-bridge-gui-<arch>.AppImage, x86_64 and aarch64 alike (WS-13).
+#
+#   ./aether-serial-bridge-gui-<arch>.AppImage [args]       the window (aether-serial-bridge-gui; read-only TUI
+#                                                           when there is no display)
+#   sudo ./aether-serial-bridge-gui-<arch>.AppImage --install
+#                                                           installs the EMBEDDED headless program: it copies itself
+#                                                           (byte-identical to aether-serial-bridge-linux-x64, or
+#                                                           -arm64 in the aarch64 image) to
+#                                                           /usr/local/bin/aether-serial-bridge and installs the
+#                                                           systemd unit and the polkit policy the window needs.
+#   sudo ./aether-serial-bridge-gui-<arch>.AppImage --uninstall [--remove-settings]
+#                                                           uninstalls with the EMBEDDED program too (v1.1 WS-15,
+#                                                           INV-124): the service, the program, the polkit policy and
+#                                                           the staging folder; the settings in /etc/aether-serial-bridge
+#                                                           stay unless --remove-settings is given. This is the terminal
+#                                                           command the window shows when polkit cannot ask.
+#
+# systemd cannot start a program inside an AppImage (a FUSE mount that ends with the process), so the service runs
+# the installed copy; after --install every other command is `aether-serial-bridge <command>`.
+# linuxdeploy's Qt hooks (apprun-hooks/) set the plugin path for the window only.
+here="$(dirname "$(readlink -f "$0")")"
+# The AppImage runtime sets APPDIR; an extracted image run directly (the release self-test, extract mode) does not.
+: "${APPDIR:=$here}"
+export APPDIR
+for arg in "$@"; do
+    case "$arg" in
+        --install|--INSTALL|--uninstall|--UNINSTALL) exec "$here/usr/libexec/aether-serial-bridge" "$@" ;;
+    esac
+done
+if [ -d "$here/apprun-hooks" ]; then
+    for hook in "$here"/apprun-hooks/*.sh; do
+        [ -e "$hook" ] && . "$hook"
+    done
+fi
+exec "$here/usr/bin/aether-serial-bridge-gui" "$@"

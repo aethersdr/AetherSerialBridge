@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Aether Serial Bridge
+Comment=Serial devices on the network for AetherSDR
+Exec=aether-serial-bridge-gui
+Icon=aether-serial-bridge
+StartupWMClass=AetherSerialBridge
+Categories=Network;HamRadio;
+Terminal=false

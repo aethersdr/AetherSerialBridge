@@ -1,0 +1,24 @@
+       ..........         Aether Serial Bridge                                  
+    ................      Serial gear on the network for AetherSDR: one port,   
+  ........:==-........    one client.                                           
+ ........=***%*:.......                                                         
+........-+=..=#+::......  Service * running (pid 4000)                          
+.......:=:.:--=+=-===--:  Config not loaded: the data folder isn't trusted.     
+.:::-::--:--:..=+:..:::.  Press R to repair it.                                 
+......:::......:=+-.....                                                        
+ ................:--::.                                                         
+  .........:-.........                                                          
+    ................                                                            
+       ..........                                                               
+On  Name       Device         Listen                State                       
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[?] Start automatically at boot (not known)                                     
+                                                                                
+Enter edit  a add  d del  Space on/off  s save&apply  ? help  q quit            

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 2,
+  "name": "ASB Fixture",
+  "scopes": {
+    "root": {
+      "tokens": {
+        "color": {
+          "accent": "#0088b0"
+        }
+      }
+    }
+  },
+  "baseTheme": "Default Light"
+}

@@ -1,0 +1,20 @@
+Aether Serial Bridge · o not installed  
+On  Name    Device    Port State        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+[ ] Start automatically at boot         
+No ports yet. Press a to add one.       
+? keys  s save&apply  q quit            

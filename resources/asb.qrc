@@ -1,0 +1,28 @@
+<!DOCTYPE RCC>
+<!-- The GUI's resources. From the vendored AetherSDR tree (WS-2; vendor/aethersdr, PROVENANCE.md): the two bundled
+     themes ThemeManager lists as built-ins, the Inter UI font (SIL OFL 1.1, vendor/aethersdr/third_party/inter/
+     LICENSE.txt) and the AetherSDR logo (D8, shipped with attribution); their aliases are the resource paths AetherSDR
+     itself uses, so vendored code finds them unchanged. The bridge's own: /appicon, the application icon
+     (resources/icon/, tools/make_icons.sh; the window icon, applyApplicationIcon). -->
+<RCC>
+    <qresource prefix="/">
+        <file alias="icon.png">../vendor/aethersdr/docs/assets/logo-circle.png</file>
+        <file alias="logo-256.png">../vendor/aethersdr/docs/assets/logo-circle-256.png</file>
+    </qresource>
+    <qresource prefix="/themes">
+        <file alias="default-dark.json">../vendor/aethersdr/resources/themes/default-dark.json</file>
+        <file alias="default-light.json">../vendor/aethersdr/resources/themes/default-light.json</file>
+    </qresource>
+    <qresource prefix="/appicon">
+        <file alias="asb-icon-16.png">icon/asb-icon-16.png</file>
+        <file alias="asb-icon-32.png">icon/asb-icon-32.png</file>
+        <file alias="asb-icon-48.png">icon/asb-icon-48.png</file>
+        <file alias="asb-icon-64.png">icon/asb-icon-64.png</file>
+        <file alias="asb-icon-128.png">icon/asb-icon-128.png</file>
+        <file alias="asb-icon-256.png">icon/asb-icon-256.png</file>
+    </qresource>
+    <qresource prefix="/fonts">
+        <file alias="Inter-Regular.ttf">../vendor/aethersdr/third_party/inter/Inter-Regular.ttf</file>
+        <file alias="Inter-Bold.ttf">../vendor/aethersdr/third_party/inter/Inter-Bold.ttf</file>
+    </qresource>
+</RCC>
