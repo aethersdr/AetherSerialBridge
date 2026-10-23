@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       # The build tree stays in the checkout: moc writes includes relative to it, so a symlinked build/
       # breaks them. actions/cache refuses a path with '..' in it (it warned "Relative pathing '.' and
@@ -150,7 +150,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       # The build tree stays in the checkout: moc writes includes relative to it, so a symlinked build/
       # breaks them. actions/cache refuses a path with '..' in it (it warned "Relative pathing '.' and
@@ -226,7 +226,7 @@ jobs:
       ASAN_OPTIONS: detect_leaks=1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       # The build tree stays in the checkout: moc writes includes relative to it, so a symlinked build/
       # breaks them. actions/cache refuses a path with '..' in it (it warned "Relative pathing '.' and
@@ -273,7 +273,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       # As AetherSDR's CI: the hosted image's toolchains this job never uses are deleted for disk (the Docker images,
       # Qt trees and build trees together outgrow the runner's free space).
@@ -373,7 +373,7 @@ jobs:
     if: vars.ASB_ARM64_RUNNERS != 'false'
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       # Everything runs in an ubuntu:24.04 container (the distribution's Qt); the tests run as an unprivileged user,
       # as on the other Linux legs.
@@ -404,7 +404,7 @@ jobs:
     env:
       QT_ARCH: 'win64_msvc2022_64'
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Qt location
         shell: pwsh
@@ -843,7 +843,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Vendored closure = upstream + patches (fresh fetch, re-applied patches, PROVENANCE.md)
         run: ci/scripts/vendor-integrity.sh
       - name: The check fails on a one-byte edit, an unlisted file and a broken patch
@@ -856,7 +856,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Qt pin and workflow rules agree
         run: python3 tools/check_qt_pin.py
       - name: Presets are valid JSON and cmake accepts them

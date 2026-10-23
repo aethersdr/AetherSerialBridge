@@ -37,7 +37,7 @@ jobs:
     env:
       QT_ARCH: 'win64_msvc2022_64'
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       # The pinned Qt: the Actions cache entry ci.yml's windows leg keeps (same path, same key). This job only reads it,
       # behind the same revision evidence check; it installs nothing (run ci.yml on main first if the entry is gone).
@@ -97,7 +97,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Qt cache location
         run: echo "QT_CACHE=$RUNNER_TEMP/qt-cache" >> "$GITHUB_ENV"
@@ -147,7 +147,7 @@ jobs:
     if: vars.ASB_ARM64_RUNNERS != 'false'
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Build and render the TUI in the container
         run: |

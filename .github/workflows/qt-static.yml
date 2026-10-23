@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 240
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Build the build container
         run: >-
@@ -98,7 +98,7 @@ jobs:
       matrix:
         profile: [linux-headless, linux-gui-shared]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Build the build container
         run: >-
@@ -151,7 +151,7 @@ jobs:
       matrix:
         profile: [windows-gui, windows-headless]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: MSVC environment
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
