@@ -68,7 +68,7 @@ jobs:
         run: ci/scripts/install-qt.sh "$QT_CACHE" linux_gcc_64
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@7c1e4cf0b20d7c1872b26569c00ba908797a59bf
+        uses: github/codeql-action/init@0911ee96d2d6c8def97122c36c5cadd93829a4b4
         with:
           languages: cpp
           config-file: ./.github/codeql/codeql-config.yml
